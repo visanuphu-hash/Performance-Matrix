@@ -114,26 +114,27 @@
                 <i class="ph-fill ph-info"></i> เกณฑ์เกรด
             </button>
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div class="kpi-card bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
                 <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total Heads</div>
                 <div class="mt-2 text-2xl font-black text-slate-800 tabular-nums" id="kpi-total">0</div>
                 <div class="text-[11px] text-slate-500" id="kpi-view-label">All Organization</div>
             </div>
-            <div class="kpi-card bg-white border border-orange-100 rounded-xl p-3 shadow-sm">
-                <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Abnormal</div>
-                <div class="mt-2 flex items-end gap-2"><span class="text-2xl font-black text-orange-600 tabular-nums" id="kpi-abnormal">0</span><span class="text-xs font-bold text-orange-500 pb-1" id="kpi-abnormal-pct">0%</span></div>
-                <div class="text-[11px] text-slate-500">แกนหนึ่งอ่อน (T/I) อีกแกนดี (G ขึ้นไป)</div>
-            </div>
             <div class="kpi-card bg-white border border-emerald-100 rounded-xl p-3 shadow-sm">
                 <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">High Performance</div>
                 <div class="mt-2 flex items-end gap-2"><span class="text-2xl font-black text-emerald-700 tabular-nums" id="kpi-high">0</span><span class="text-xs font-bold text-emerald-500 pb-1" id="kpi-high-pct">0%</span></div>
-                <div class="text-[11px] text-slate-500">ทั้งสองแกน G ขึ้นไปทั้งคู่</div>
+            </div>
+            <div class="kpi-card bg-white border border-amber-100 rounded-xl p-3 shadow-sm">
+                <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Normal</div>
+                <div class="mt-2 flex items-end gap-2"><span class="text-2xl font-black text-amber-600 tabular-nums" id="kpi-normal">0</span><span class="text-xs font-bold text-amber-500 pb-1" id="kpi-normal-pct">0%</span></div>
+            </div>
+            <div class="kpi-card bg-white border border-orange-100 rounded-xl p-3 shadow-sm">
+                <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Abnormal</div>
+                <div class="mt-2 flex items-end gap-2"><span class="text-2xl font-black text-orange-600 tabular-nums" id="kpi-abnormal">0</span><span class="text-xs font-bold text-orange-500 pb-1" id="kpi-abnormal-pct">0%</span></div>
             </div>
             <div class="kpi-card bg-white border border-red-100 rounded-xl p-3 shadow-sm">
                 <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Development</div>
                 <div class="mt-2 flex items-end gap-2"><span class="text-2xl font-black text-red-700 tabular-nums" id="kpi-dev">0</span><span class="text-xs font-bold text-red-500 pb-1" id="kpi-dev-pct">0%</span></div>
-                <div class="text-[11px] text-slate-500">ทั้งสองแกน T-A แต่ไม่ใช่ A,A</div>
             </div>
         </div>
     </section>
@@ -162,10 +163,10 @@
                         </div>
                     </div>
                     <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-2 px-1">
-                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#f87171"></span>Development (T-A ทั้งคู่, ไม่ใช่ A,A)</span>
-                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#fb923c"></span>Abnormal (แกนหนึ่งอ่อน อีกแกนดี)</span>
-                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#facc15"></span>Normal (A ขึ้นไปทั้งคู่)</span>
-                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#4ade80"></span>High Performance (G ขึ้นไปทั้งคู่)</span>
+                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#f87171"></span>Development</span>
+                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#fb923c"></span>Abnormal</span>
+                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#facc15"></span>Normal</span>
+                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#4ade80"></span>High Performance</span>
                     </div>
                 </div>
             </section>
@@ -176,7 +177,7 @@
                 <div class="flex-1 flex flex-col glass-panel rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="bg-emerald-50 border-b border-emerald-100 p-3 shrink-0">
                         <div class="flex justify-between items-center">
-                            <h2 class="font-bold text-emerald-700 flex items-center gap-1.5 text-sm uppercase tracking-wide"><i class="ph-fill ph-trend-up text-lg"></i> High Perf.</h2>
+                            <h2 class="font-bold text-emerald-700 flex items-center gap-1.5 text-sm uppercase tracking-wide"><i class="ph-fill ph-trend-up text-lg"></i> High Performer</h2>
                             <span class="bg-white px-2 py-0.5 rounded-full text-xs font-bold text-emerald-600 shadow-sm border border-emerald-100 tabular-nums" id="count-high">0</span>
                         </div>
                     </div>
@@ -731,15 +732,18 @@
             const grouped = data.map(emp => ({ ...emp, derivedGroup: deriveGroup(emp) }));
             const abnormal = grouped.filter(e => e.derivedGroup === 'abnormal').length;
             const high = grouped.filter(e => e.derivedGroup === 'high').length;
+            const normal = grouped.filter(e => e.derivedGroup === 'normal').length;
             const dev = grouped.filter(e => e.derivedGroup === 'develop').length;
             const viewLabels = { all: 'All Organization', hq: 'Talent HQ', store: 'Talent Store' };
 
             document.getElementById('kpi-total').innerText = total;
             document.getElementById('kpi-view-label').innerText = viewLabels[filterValue] || 'Selected View';
-            document.getElementById('kpi-abnormal').innerText = abnormal;
-            document.getElementById('kpi-abnormal-pct').innerText = pct(abnormal, total);
             document.getElementById('kpi-high').innerText = high;
             document.getElementById('kpi-high-pct').innerText = pct(high, total);
+            document.getElementById('kpi-normal').innerText = normal;
+            document.getElementById('kpi-normal-pct').innerText = pct(normal, total);
+            document.getElementById('kpi-abnormal').innerText = abnormal;
+            document.getElementById('kpi-abnormal-pct').innerText = pct(abnormal, total);
             document.getElementById('kpi-dev').innerText = dev;
             document.getElementById('kpi-dev-pct').innerText = pct(dev, total);
         }
@@ -1011,9 +1015,9 @@
 
         function renderPool(data) {
             const grouped = data.map(emp => ({ ...emp, derivedGroup: deriveGroup(emp) }));
-            const grpDev = grouped.filter(e => e.derivedGroup === 'develop');
+            const grpDev = grouped.filter(e => e.derivedGroup === 'develop').sort((a, b) => a.indivScore - b.indivScore);
             const grpAbnormal = grouped.filter(e => e.derivedGroup === 'abnormal');
-            const grpHigh = grouped.filter(e => e.derivedGroup === 'high');
+            const grpHigh = grouped.filter(e => e.derivedGroup === 'high').sort((a, b) => b.indivScore - a.indivScore);
 
             document.getElementById('count-dev').innerText = grpDev.length;
             document.getElementById('count-abnormal').innerText = grpAbnormal.length;
