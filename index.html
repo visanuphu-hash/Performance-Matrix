@@ -381,6 +381,17 @@
         </div>
     </div>
 
+    <!-- Cluster List Modal: shown when a click near the matrix matches more than one person -->
+    <div id="cluster-list-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-4 bg-gradient-to-r from-slate-900 to-blue-900 text-white flex items-center justify-between shrink-0">
+                <h3 class="font-black text-base flex items-center gap-2"><i class="ph-fill ph-users-three"></i> <span id="cluster-list-count">0</span> คนในจุดนี้</h3>
+                <button onclick="closeClusterList()" class="text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition"><i class="ph ph-x text-lg"></i></button>
+            </div>
+            <div id="cluster-list-body" class="overflow-y-auto custom-scrollbar divide-y divide-slate-100"></div>
+        </div>
+    </div>
+
     <!-- HQ Talent Profile Modal (kept, view is unreachable until nav is re-enabled) -->
     <div id="hq-profile-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
@@ -852,13 +863,23 @@
                 high: { label: GROUP_LABEL.high, color: GROUP_POINT_COLOR.high, data: [] }
             };
 
+            // Jitter separates overlapping dots but must never push a point across
+            // its own band edge — otherwise a "High Performance" (green) point can
+            // visually land inside the "Normal" (yellow) cell next door.
+            function clampToBand(rawPos, jitter) {
+                const band = Math.floor(rawPos);
+                return Math.min(band + 0.95, Math.max(band + 0.05, rawPos + jitter));
+            }
+
             data.forEach(emp => {
                 const derivedGroup = deriveGroup(emp);
-                const jitterX = deterministicJitter(emp.id, 'x') * 0.12; // small, band-relative jitter
+                const rawX = scoreToVirtualPos(emp.indivScore, INDIV_AXIS_BOUNDS);
+                const rawY = scoreToVirtualPos(emp.deptScore, DEPT_AXIS_BOUNDS);
+                const jitterX = deterministicJitter(emp.id, 'x') * 0.12;
                 const jitterY = deterministicJitter(emp.id, 'y') * 0.12;
                 groups[derivedGroup].data.push({
-                    x: scoreToVirtualPos(emp.indivScore, INDIV_AXIS_BOUNDS) + jitterX,
-                    y: scoreToVirtualPos(emp.deptScore, DEPT_AXIS_BOUNDS) + jitterY,
+                    x: clampToBand(rawX, jitterX),
+                    y: clampToBand(rawY, jitterY),
                     empData: { ...emp, derivedGroup }
                 });
             });
@@ -919,12 +940,26 @@
                             }
                         }
                     },
-                    onClick: (event, elements) => {
-                        if (elements.length > 0) {
-                            const datasetIndex = elements[0].datasetIndex;
-                            const index = elements[0].index;
-                            const emp = scatterChartInstance.data.datasets[datasetIndex].data[index].empData;
-                            openProfileModal(emp.id);
+                    onClick: (event) => {
+                        // Manual pixel-proximity hit test instead of Chart.js's default
+                        // intersect:true detection: with 300+ points crammed into a
+                        // small grid, requiring an exact hit made most clicks miss.
+                        // This also naturally surfaces every overlapping point at once.
+                        const HIT_RADIUS = 16;
+                        const matches = [];
+                        scatterChartInstance.data.datasets.forEach(ds => {
+                            ds.data.forEach(point => {
+                                const px = scatterChartInstance.scales.x.getPixelForValue(point.x);
+                                const py = scatterChartInstance.scales.y.getPixelForValue(point.y);
+                                const dist = Math.hypot(px - event.x, py - event.y);
+                                if (dist <= HIT_RADIUS) matches.push({ emp: point.empData, dist });
+                            });
+                        });
+                        matches.sort((a, b) => a.dist - b.dist);
+                        if (matches.length === 1) {
+                            openProfileModal(matches[0].emp.id);
+                        } else if (matches.length > 1) {
+                            openClusterList(matches.map(m => m.emp));
                         }
                     },
                     onHover: (event, elements) => {
@@ -1196,6 +1231,33 @@
             document.getElementById('profile-modal').classList.remove('hidden');
         }
         function closeProfileModal() { document.getElementById('profile-modal').classList.add('hidden'); }
+
+        // ============================================================
+        // CLUSTER LIST MODAL — pick one person out of an overlapping click
+        // ============================================================
+        function openClusterList(emps) {
+            document.getElementById('cluster-list-count').innerText = emps.length;
+            document.getElementById('cluster-list-body').innerHTML = emps.map(emp => {
+                const derivedGroup = deriveGroup(emp);
+                const displayTag = getDisplayTag({ ...emp, derivedGroup });
+                const displayTagColor = getDisplayTagColor({ ...emp, derivedGroup });
+                return `
+                    <div class="flex items-center gap-3 p-3 hover:bg-slate-50 cursor-pointer transition" onclick="closeClusterList(); openProfileModal('${emp.id}')">
+                        ${avatarHTML(emp.name, 'w-10 h-10 text-xs')}
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-bold text-slate-800 truncate">${emp.name}</div>
+                            <div class="text-xs text-slate-500 truncate">${emp.position}</div>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <div class="text-xs font-bold text-slate-700 tabular-nums">${emp.indivScore.toFixed(1)}% / ${emp.deptScore.toFixed(1)}%</div>
+                            <span class="${displayTagColor} text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">${displayTag}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('cluster-list-modal').classList.remove('hidden');
+        }
+        function closeClusterList() { document.getElementById('cluster-list-modal').classList.add('hidden'); }
 
         // ============================================================
         // GRADE LEGEND MODAL
