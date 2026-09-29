@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HomePro Executive Talent Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; overflow: hidden; background-color: #f8fafc; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Layout specific */
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+
+        /* Table row hover */
+        .table-row-hover:hover { background-color: #f1f5f9; cursor: pointer; transition: background-color 0.2s; }
+        .kpi-card { min-height: 82px; }
+        .sort-header { cursor: pointer; user-select: none; }
+        .sort-header:hover { color: #1d4ed8; background-color: #eff6ff; }
+
+        #matrix-panel.is-fullscreen {
+            position: fixed; inset: 0; z-index: 50;
+            width: 100vw; height: 100vh;
+            border-radius: 0; background: #ffffff;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col text-slate-800">
+
+    <!-- Top Bar -->
+    <header class="bg-white shadow-sm shrink-0 z-20 relative border-b border-slate-200">
+        <div class="h-16 flex items-center justify-between px-6 gap-4">
+            <div class="flex items-center gap-4 shrink-0">
+                <div class="w-10 h-10 bg-gradient-to-br from-blue-700 to-blue-500 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md">H</div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-800 leading-tight">Executive Talent Dashboard</h1>
+                    <p class="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Strategic HR Intelligence</p>
+                </div>
+            </div>
+
+            <!-- Global Filter & View Switcher -->
+            <div class="flex items-center gap-3 flex-wrap justify-end">
+
+                <!-- View Switcher -->
+                <div class="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
+                    <button onclick="switchView('board')" id="btn-view-board" class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold rounded-md bg-white text-blue-700 shadow-sm transition-all">
+                        <i class="ph-fill ph-squares-four"></i> Board
+                    </button>
+                    <button onclick="switchView('table')" id="btn-view-table" class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold rounded-md text-slate-500 hover:text-slate-700 transition-all">
+                        <i class="ph-fill ph-table"></i> Table
+                    </button>
+                </div>
+
+                <div class="w-px h-8 bg-slate-200"></div> <!-- Divider -->
+
+                <div class="flex items-center gap-2 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                    <span class="text-sm font-semibold text-slate-600 pl-3">Data View:</span>
+                    <select id="global-filter" onchange="applyFilters()" class="bg-white border border-slate-300 text-blue-700 font-bold text-sm rounded-md px-4 py-1.5 outline-none shadow-sm cursor-pointer min-w-[150px]">
+                        <option value="all">🌐 All Organization</option>
+                        <option value="hq">HQ</option>
+                        <option value="store">STORE</option>
+                    </select>
+                </div>
+
+                <!-- Stat Summary -->
+                <div class="hidden md:flex flex-col items-end pl-3 border-l border-slate-200">
+                    <div class="text-xl font-black text-slate-800 leading-none" id="stat-total">0</div>
+                    <div class="text-[10px] text-slate-500 uppercase font-semibold">Total Heads</div>
+                </div>
+
+                <div class="w-px h-8 bg-slate-200"></div> <!-- Divider -->
+
+                <!-- Upload -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <input type="file" id="upload-input" accept=".xlsx,.xls" class="hidden" onchange="handleUploadFile(event)">
+                    <button onclick="document.getElementById('upload-input').click()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-md bg-blue-700 text-white hover:bg-blue-800 transition shadow-sm">
+                        <i class="ph-fill ph-upload-simple"></i> Upload ข้อมูลใหม่
+                    </button>
+                    <button onclick="resetToSampleData()" title="กลับไปใช้ข้อมูลตัวอย่างเริ่มต้น" class="text-slate-400 hover:text-slate-600 text-xs font-semibold underline decoration-dotted decoration-slate-300 shrink-0">รีเซ็ต</button>
+                </div>
+            </div>
+        </div>
+        <div id="upload-status-bar" class="hidden px-6 py-1.5 text-xs font-semibold border-t"></div>
+    </header>
+
+    <!-- KPI Bar -->
+    <section id="kpi-bar" class="bg-slate-50 border-b border-slate-200 shrink-0 px-4 py-3">
+        <div class="flex items-center justify-between mb-2">
+            <div id="data-source-note" class="text-[11px] text-slate-400 font-medium">กำลังโหลดข้อมูล...</div>
+            <button onclick="openGradeLegend()" class="flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:text-blue-900">
+                <i class="ph-fill ph-info"></i> เกณฑ์เกรด
+            </button>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="kpi-card bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+                <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total Heads</div>
+                <div class="mt-2 text-2xl font-black text-slate-800 tabular-nums" id="kpi-total">0</div>
+                <div class="text-[11px] text-slate-500" id="kpi-view-label">All Organization</div>
+            </div>
+            <div class="kpi-card bg-white border border-orange-100 rounded-xl p-3 shadow-sm">
+                <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Abnormal</div>
+                <div class="mt-2 flex items-end gap-2"><span class="text-2xl font-black text-orange-600 tabular-nums" id="kpi-abnormal">0</span><span class="text-xs font-bold text-orange-500 pb-1" id="kpi-abnormal-pct">0%</span></div>
+                <div class="text-[11px] text-slate-500">แกนหนึ่งอ่อน (T/I) อีกแกนดี (G ขึ้นไป)</div>
+            </div>
+            <div class="kpi-card bg-white border border-emerald-100 rounded-xl p-3 shadow-sm">
+                <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">High Performance</div>
+                <div class="mt-2 flex items-end gap-2"><span class="text-2xl font-black text-emerald-700 tabular-nums" id="kpi-high">0</span><span class="text-xs font-bold text-emerald-500 pb-1" id="kpi-high-pct">0%</span></div>
+                <div class="text-[11px] text-slate-500">ทั้งสองแกน G ขึ้นไปทั้งคู่</div>
+            </div>
+            <div class="kpi-card bg-white border border-red-100 rounded-xl p-3 shadow-sm">
+                <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Development</div>
+                <div class="mt-2 flex items-end gap-2"><span class="text-2xl font-black text-red-700 tabular-nums" id="kpi-dev">0</span><span class="text-xs font-bold text-red-500 pb-1" id="kpi-dev-pct">0%</span></div>
+                <div class="text-[11px] text-slate-500">ทั้งสองแกน T-A แต่ไม่ใช่ A,A</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Dashboard Area (One Page) -->
+    <main class="flex-1 overflow-hidden bg-slate-50 relative p-4">
+
+        <!-- ================= VIEW 1: BOARD VIEW (Scatter + Columns) ================= -->
+        <div id="view-board" class="flex h-full gap-4 w-full opacity-100 transition-opacity duration-300">
+            <!-- LEFT PANEL: SCATTER PLOT -->
+            <section id="matrix-panel" class="w-5/12 glass-panel rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+                <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2"><i class="ph-fill ph-chart-scatter text-blue-600"></i> Performance Matrix</h2>
+                        <p class="text-xs text-slate-500">Store GM-DM Level Grid — Individual (แกน X) × Dept./Store (แกน Y)</p>
+                    </div>
+                    <button onclick="toggleMatrixFullscreen()" id="btn-matrix-fullscreen" title="ขยายเต็มจอ" class="shrink-0 flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50 transition">
+                        <i class="ph-fill ph-arrows-out text-lg"></i>
+                    </button>
+                </div>
+
+                <div class="flex-1 p-4 flex flex-col min-h-0 bg-white relative">
+                    <div class="flex-1 w-full relative">
+                        <canvas id="scatterChart"></canvas>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-2 px-1">
+                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#f87171"></span>Development (T-A ทั้งคู่, ไม่ใช่ A,A)</span>
+                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#fb923c"></span>Abnormal (แกนหนึ่งอ่อน อีกแกนดี)</span>
+                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#facc15"></span>Normal (A ขึ้นไปทั้งคู่)</span>
+                        <span class="flex items-center gap-1 text-[10px] font-semibold text-slate-500"><span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:#4ade80"></span>High Performance (G ขึ้นไปทั้งคู่)</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RIGHT PANEL: TALENT POOL -->
+            <section class="w-7/12 flex gap-3 overflow-hidden">
+                <!-- Col 1: High Performance -->
+                <div class="flex-1 flex flex-col glass-panel rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="bg-emerald-50 border-b border-emerald-100 p-3 shrink-0">
+                        <div class="flex justify-between items-center">
+                            <h2 class="font-bold text-emerald-700 flex items-center gap-1.5 text-sm uppercase tracking-wide"><i class="ph-fill ph-trend-up text-lg"></i> High Perf.</h2>
+                            <span class="bg-white px-2 py-0.5 rounded-full text-xs font-bold text-emerald-600 shadow-sm border border-emerald-100 tabular-nums" id="count-high">0</span>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-3 custom-scrollbar bg-slate-50/50"><div id="pool-high" class="flex flex-col gap-3"></div></div>
+                </div>
+
+                <!-- Col 2: Abnormal (collapsed entirely when there are none) -->
+                <div id="col-abnormal" class="hidden flex-1 flex flex-col glass-panel rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="bg-orange-50 border-b border-orange-100 p-3 shrink-0">
+                        <div class="flex justify-between items-center">
+                            <h2 class="font-bold text-orange-700 flex items-center gap-1.5 text-sm uppercase tracking-wide"><i class="ph-fill ph-warning text-lg"></i> Abnormal</h2>
+                            <span class="bg-white px-2 py-0.5 rounded-full text-xs font-bold text-orange-600 shadow-sm border border-orange-100 tabular-nums" id="count-abnormal">0</span>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-3 custom-scrollbar bg-slate-50/50"><div id="pool-abnormal" class="flex flex-col gap-3"></div></div>
+                </div>
+
+                <!-- Col 3: Development -->
+                <div class="flex-1 flex flex-col glass-panel rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="bg-red-50 border-b border-red-100 p-3 shrink-0">
+                        <div class="flex justify-between items-center">
+                            <h2 class="font-bold text-red-700 flex items-center gap-1.5 text-sm uppercase tracking-wide"><i class="ph-fill ph-warning-circle text-lg"></i> Development</h2>
+                            <span class="bg-white px-2 py-0.5 rounded-full text-xs font-bold text-red-600 shadow-sm border border-red-100 tabular-nums" id="count-dev">0</span>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-3 custom-scrollbar bg-slate-50/50"><div id="pool-dev" class="flex flex-col gap-3"></div></div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= VIEW 2: TABLE VIEW (Data List) ================= -->
+        <div id="view-table" class="hidden h-full w-full flex flex-col glass-panel rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-4 border-b border-slate-200 bg-white flex justify-between items-center shrink-0">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2"><i class="ph-fill ph-users text-blue-600"></i> Talent Directory</h2>
+                    <p class="text-xs text-slate-500">Detailed list of all personnel in the selected view.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-sm font-semibold text-slate-500"><span id="table-count" class="text-blue-700 font-bold tabular-nums">0</span> Records Found</div>
+                    <button onclick="exportTableCsv()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-md bg-blue-700 text-white hover:bg-blue-800 transition">
+                        <i class="ph-fill ph-download-simple"></i> Export CSV
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-3 border-b border-slate-200 bg-slate-50 grid grid-cols-1 md:grid-cols-4 gap-3 shrink-0">
+                <label class="relative">
+                    <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    <input id="table-search" oninput="renderTable()" placeholder="Search name, nickname, position..." class="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                </label>
+                <select id="table-talent-filter" onchange="renderTable()" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-blue-500">
+                    <option value="all">All Talent Groups</option>
+                    <option value="high">High Performance</option>
+                    <option value="normal">Normal</option>
+                    <option value="abnormal">Abnormal</option>
+                    <option value="develop">Development</option>
+                </select>
+                <select id="table-level-filter" onchange="renderTable()" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-blue-500">
+                    <option value="all">All Levels</option>
+                </select>
+                <select id="table-group-filter" onchange="renderTable()" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-blue-500">
+                    <option value="all">All Groups</option>
+                </select>
+            </div>
+
+            <div class="flex-1 overflow-auto custom-scrollbar bg-white">
+                <table class="w-full text-left border-collapse min-w-max">
+                    <thead class="bg-slate-50 sticky top-0 z-10 shadow-sm border-b border-slate-200">
+                        <tr>
+                            <th onclick="sortTable('name')" class="sort-header py-3 px-4 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Employee Profile <span data-sort-key="name"></span></th>
+                            <th onclick="sortTable('position')" class="sort-header py-3 px-4 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Position / Department <span data-sort-key="position"></span></th>
+                            <th onclick="sortTable('level')" class="sort-header py-3 px-4 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider text-center">Level <span data-sort-key="level"></span></th>
+                            <th onclick="sortTable('talentGroup')" class="sort-header py-3 px-4 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider text-center">Talent Group <span data-sort-key="talentGroup"></span></th>
+                            <th onclick="sortTable('indivScore')" class="sort-header py-3 px-4 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider text-center">Individual <span data-sort-key="indivScore"></span></th>
+                            <th onclick="sortTable('deptScore')" class="sort-header py-3 px-4 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider text-center">Dept. <span data-sort-key="deptScore"></span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-slate-100">
+                        <!-- Table rows populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ================= VIEW 3: TALENT POOL HQ (hidden for now - no matching assessment data source yet) ================= -->
+        <div id="view-hq-talent" class="hidden h-full w-full flex flex-col glass-panel rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-200 bg-white flex justify-between items-center shrink-0">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2"><i class="ph-fill ph-star-four text-blue-600"></i> Talent Pool HQ</h2>
+                    <p class="text-xs text-slate-500">Talent-only view with test result, grade, and career growth fit.</p>
+                </div>
+                <div class="text-sm font-semibold text-slate-500"><span id="hq-talent-count" class="text-blue-700 font-bold">0</span> HQ Talent Profiles</div>
+            </div>
+
+            <div class="px-3 py-2 border-b border-slate-200 bg-slate-50 grid grid-cols-1 md:grid-cols-4 gap-2 shrink-0">
+                <label class="relative">
+                    <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    <input id="hq-talent-search" oninput="renderHQTalentView()" placeholder="Search talent, department..." class="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-9 pr-3 text-xs font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                </label>
+                <select id="hq-talent-dept-filter" onchange="renderHQTalentView()" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500">
+                    <option value="all">All Departments</option>
+                </select>
+                <select id="hq-talent-career-filter" onchange="renderHQTalentView()" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500">
+                    <option value="all">All Career Tracks</option>
+                </select>
+                <select id="hq-talent-level-filter" onchange="renderHQTalentView()" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500">
+                    <option value="all">All Potential Levels</option>
+                    <option value="Potential Talent">Potential Talent</option>
+                    <option value="Ready Now">Ready Now</option>
+                    <option value="Emerging Talent">Emerging Talent</option>
+                </select>
+            </div>
+
+            <div class="px-4 py-3 grid grid-cols-2 lg:grid-cols-4 gap-3 bg-white border-b border-slate-100 shrink-0">
+                <div class="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2">
+                    <div class="text-[10px] text-blue-500 uppercase font-bold tracking-wider">HQ Talent</div>
+                    <div id="hq-summary-total" class="text-xl font-black text-blue-800 mt-0.5">0</div>
+                </div>
+                <div class="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2">
+                    <div class="text-[10px] text-emerald-500 uppercase font-bold tracking-wider">Avg Chance Level</div>
+                    <div id="hq-summary-chance" class="text-xl font-black text-emerald-800 mt-0.5">0%</div>
+                </div>
+                <div class="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2">
+                    <div class="text-[10px] text-violet-500 uppercase font-bold tracking-wider">Top Test Theme</div>
+                    <div id="hq-summary-theme" class="text-base font-black text-violet-800 mt-0.5 truncate">-</div>
+                </div>
+                <div class="rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2">
+                    <div class="text-[10px] text-amber-600 uppercase font-bold tracking-wider">Top Career Track</div>
+                    <div id="hq-summary-career" class="text-base font-black text-amber-800 mt-0.5 truncate">-</div>
+                </div>
+            </div>
+
+            <div id="hq-talent-grid" class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 p-3 grid grid-cols-1 xl:grid-cols-3 gap-2.5 content-start"></div>
+        </div>
+
+    </main>
+
+    <!-- Employee Profile Modal (redesigned: no photo, no radar, no tenure/risk/IDP - real fields only) -->
+    <div id="profile-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div id="modal-header-bg" class="p-6 relative shrink-0 flex items-center gap-4 bg-gradient-to-r from-blue-800 to-blue-600">
+                <button onclick="closeProfileModal()" class="absolute top-3 right-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition"><i class="ph ph-x text-lg"></i></button>
+                <div id="modal-avatar" class="shrink-0"></div>
+                <div class="min-w-0">
+                    <div id="modal-tag" class="mb-1"></div>
+                    <h2 id="modal-name" class="text-xl font-black text-white leading-tight truncate"></h2>
+                    <p id="modal-nickname" class="text-xs text-white/70"></p>
+                    <p id="modal-role" class="text-sm text-white/90 mt-0.5 truncate"></p>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-6">
+                <div id="modal-identity" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div class="bg-slate-50 rounded-xl border border-slate-100 p-4">
+                        <div class="flex items-end justify-between mb-2">
+                            <span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Individual Performance</span>
+                            <span id="modal-indiv-grade-badge"></span>
+                        </div>
+                        <div class="text-3xl font-black text-slate-800 tabular-nums" id="modal-indiv-score"></div>
+                        <div id="modal-indiv-ruler" class="mt-3"></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl border border-slate-100 p-4">
+                        <div class="flex items-end justify-between mb-2">
+                            <span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Dept. / Store Performance</span>
+                            <span id="modal-dept-grade-badge"></span>
+                        </div>
+                        <div class="text-3xl font-black text-slate-800 tabular-nums" id="modal-dept-score"></div>
+                        <div id="modal-dept-ruler" class="mt-3"></div>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50/50 rounded-xl p-4 border border-blue-100">
+                    <h3 class="text-sm font-bold text-blue-800 mb-1 flex items-center gap-2"><i class="ph-fill ph-info"></i> สรุปกลุ่ม Talent</h3>
+                    <p id="modal-group-desc" class="text-sm text-slate-700 leading-relaxed"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grade Legend Modal -->
+    <div id="grade-legend-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+            <div class="px-5 py-4 bg-gradient-to-r from-slate-900 to-blue-900 text-white flex items-center justify-between shrink-0">
+                <h3 class="font-black text-lg flex items-center gap-2"><i class="ph-fill ph-ruler"></i> เกณฑ์การให้เกรด</h3>
+                <button onclick="closeGradeLegend()" class="text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition"><i class="ph ph-x text-lg"></i></button>
+            </div>
+            <div class="p-5 overflow-x-auto max-h-[80vh] custom-scrollbar">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-slate-900 text-white text-[11px] uppercase tracking-wide">
+                            <th class="p-2.5 text-left rounded-tl-md">Grade</th>
+                            <th class="p-2.5 text-left">Definition</th>
+                            <th class="p-2.5 text-center">Dept. Performance</th>
+                            <th class="p-2.5 text-center rounded-tr-md">Individual Performance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="grade-legend-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- HQ Talent Profile Modal (kept, view is unreachable until nav is re-enabled) -->
+    <div id="hq-profile-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-gradient-to-r from-blue-800 to-indigo-700 text-white flex justify-between items-start shrink-0">
+                <div class="flex items-center gap-4 min-w-0">
+                    <img id="hq-modal-img" src="" alt="HQ Talent profile" class="w-16 h-16 rounded-full border-2 border-white/70 object-cover bg-white shrink-0 shadow-lg">
+                    <div class="min-w-0">
+                        <div id="hq-modal-level" class="inline-flex mb-2 px-2 py-1 rounded-full bg-white/15 border border-white/20 text-[10px] font-black uppercase tracking-wider"></div>
+                        <h2 id="hq-modal-name" class="text-2xl font-black leading-tight"></h2>
+                        <p id="hq-modal-role" class="text-sm text-blue-100"></p>
+                        <p id="hq-modal-dept" class="text-xs text-blue-100 font-semibold mt-1"></p>
+                    </div>
+                </div>
+                <button onclick="closeHQTalentModal()" class="text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition"><i class="ph ph-x text-lg"></i></button>
+            </div>
+            <div class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 p-5">
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+                    <div class="bg-white border border-slate-200 rounded-xl p-4">
+                        <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Chance Level</p>
+                        <div id="hq-modal-chance" class="text-3xl font-black text-blue-700 mt-1"></div>
+                    </div>
+                    <div class="bg-white border border-slate-200 rounded-xl p-4">
+                        <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Individual Performance</p>
+                        <div id="hq-modal-indiv" class="text-3xl font-black text-blue-700 mt-1"></div>
+                    </div>
+                    <div class="bg-white border border-slate-200 rounded-xl p-4">
+                        <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Dept. Performance</p>
+                        <div id="hq-modal-dept-grade" class="text-3xl font-black text-emerald-700 mt-1"></div>
+                    </div>
+                    <div class="bg-white border border-slate-200 rounded-xl p-4">
+                        <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Primary Career Fit</p>
+                        <div id="hq-modal-top-career" class="text-xl font-black text-amber-700 mt-2 truncate"></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <section class="bg-white border border-slate-200 rounded-xl p-4">
+                        <h3 class="text-sm font-black text-slate-800 mb-3 flex items-center gap-2"><i class="ph-fill ph-chart-bar text-blue-600"></i> Talent Test Result</h3>
+                        <div id="hq-modal-strengths" class="space-y-4"></div>
+                    </section>
+                    <section class="bg-white border border-slate-200 rounded-xl p-4">
+                        <h3 class="text-sm font-black text-slate-800 mb-3 flex items-center gap-2"><i class="ph-fill ph-path text-emerald-600"></i> Career Growth Fit</h3>
+                        <div id="hq-modal-careers" class="space-y-4 mb-5"></div>
+                        <h3 class="text-sm font-black text-slate-800 mb-3 flex items-center gap-2"><i class="ph-fill ph-sparkle text-violet-600"></i> Trait Result</h3>
+                        <div id="hq-modal-traits" class="grid grid-cols-3 gap-3"></div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // GRADE ENGINE — thresholds as defined by HR's official grade table
+        // ============================================================
+        const gradeLabels = ['T', 'I', 'A', 'G', 'G+', 'E', 'E+'];
+        const GRADE_DEFINITIONS = [
+            { grade: 'E+', def: 'Excellence Plus - ดีเลิศเกินคาดหมาย', dept: 95, indiv: 95 },
+            { grade: 'E',  def: 'Excellence - ดีมากเกินว่ามาตรฐานบ่อยครั้ง', dept: 90, indiv: 90 },
+            { grade: 'G+', def: 'Very Good - ดีกว่ามาตรฐานมากบ่อยครั้ง', dept: 85, indiv: 85 },
+            { grade: 'G',  def: 'Good - ดีกว่ามาตรฐานบางครั้ง', dept: 80, indiv: 80 },
+            { grade: 'A',  def: 'Average - ตามมาตรฐานเสมอ', dept: 70, indiv: 75 },
+            { grade: 'I',  def: 'Improve - ปรับปรุง', dept: 65, indiv: 65 },
+            { grade: 'T',  def: 'Terrible - ย่ำแย่', dept: 0, indiv: 0 },
+        ];
+        const INDIV_THRESHOLDS = GRADE_DEFINITIONS.map(g => [g.grade, g.indiv]);
+        const DEPT_THRESHOLDS = GRADE_DEFINITIONS.map(g => [g.grade, g.dept]);
+
+        function gradeFromScore(scorePct, thresholds) {
+            for (const [grade, min] of thresholds) { if (scorePct >= min) return grade; }
+            return 'T';
+        }
+        function gradeIdx(grade) {
+            const i = gradeLabels.indexOf(grade);
+            return i === -1 ? 2 : i; // default to 'A' if unrecognized
+        }
+        function getGradeColor(grade) {
+            if (['E+', 'E'].includes(grade)) return 'bg-blue-100 text-blue-700';
+            if (['G+', 'G'].includes(grade)) return 'bg-emerald-100 text-emerald-700';
+            if (grade === 'A') return 'bg-amber-100 text-amber-700';
+            if (['I', 'T'].includes(grade)) return 'bg-red-100 text-red-700';
+            return 'bg-slate-100 text-slate-500';
+        }
+        function gradeSolidColor(grade) {
+            if (['E+', 'E'].includes(grade)) return '#2563eb';
+            if (['G+', 'G'].includes(grade)) return '#059669';
+            if (grade === 'A') return '#d97706';
+            return '#dc2626';
+        }
+        // Official Store GM-DM Level rule (Individual x Dept. grade grid):
+        //   Abnormal   — one axis is T/I while the OTHER axis is G or above (either direction)
+        //   High       — both axes G or above
+        //   Normal     — both axes A or above, but not both G or above
+        //   Development— everything else (both T-A range, except the exact A,A combo which is Normal)
+        function deriveGroupFromGrades(indivGrade, deptGrade) {
+            const iIdx = gradeIdx(indivGrade);
+            const dIdx = gradeIdx(deptGrade);
+            const abnormal = (iIdx <= 1 && dIdx >= 3) || (dIdx <= 1 && iIdx >= 3);
+            if (abnormal) return 'abnormal';
+            if (iIdx >= 3 && dIdx >= 3) return 'high';
+            if (iIdx >= 2 && dIdx >= 2) return 'normal';
+            return 'develop';
+        }
+        function deriveGroup(emp) {
+            return deriveGroupFromGrades(emp.indivGrade, emp.deptGrade);
+        }
+        function getDisplayTag(emp) {
+            const g = emp.derivedGroup || deriveGroup(emp);
+            if (g === 'develop') return 'Development';
+            if (g === 'abnormal') return 'Abnormal';
+            if (g === 'high') return 'High Performance';
+            return 'Normal';
+        }
+        function getDisplayTagColor(emp) {
+            const g = emp.derivedGroup || deriveGroup(emp);
+            if (g === 'develop') return 'bg-red-100 text-red-700 border border-red-200';
+            if (g === 'abnormal') return 'bg-orange-100 text-orange-700 border border-orange-200';
+            if (g === 'high') return 'bg-emerald-100 text-emerald-700 border border-emerald-200';
+            return 'bg-amber-100 text-amber-700 border border-amber-200';
+        }
+        function getGroupDescription(g, emp) {
+            const i = `${emp.indivScore.toFixed(1)}% (${emp.indivGrade})`;
+            const d = `${emp.deptScore.toFixed(1)}% (${emp.deptGrade})`;
+            if (g === 'develop') return `Individual ${i} และ Dept. ${d} — ทั้งสองแกนอยู่ในช่วง T-A (ไม่ใช่ A,A ทั้งคู่) จัดอยู่ในกลุ่ม Development`;
+            if (g === 'abnormal') return `Individual ${i} และ Dept. ${d} — แกนหนึ่งอยู่ในระดับ T/I ขณะที่อีกแกนอยู่ในระดับ G ขึ้นไป ถือเป็นความผิดปกติ (Abnormal) ที่ควรตรวจสอบสาเหตุ`;
+            if (g === 'high') return `Individual ${i} และ Dept. ${d} — ทั้งสองแกนอยู่ในระดับ G ขึ้นไป จัดอยู่ในกลุ่ม High Performance`;
+            return `Individual ${i} และ Dept. ${d} — ทั้งสองแกนอยู่ในระดับ A ขึ้นไป (ยังไม่ถึง G ทั้งคู่) จัดอยู่ในกลุ่ม Normal`;
+        }
+
+        function pct(count, total) {
+            if (!total) return '0%';
+            return `${Math.round((count / total) * 100)}%`;
+        }
+
+        function stableHash(text) {
+            return [...text].reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0);
+        }
+        function deterministicJitter(id, axis) {
+            const seed = Math.abs(stableHash(`${id}-${axis}`));
+            return ((seed % 1000) / 1000 - 0.5) * 1.6; // +/- 0.8 percentage points, just to separate overlapping dots
+        }
+        function getInitials(name) {
+            return (name || '?').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+        }
+        function avatarHTML(name, sizeClasses) {
+            return `<div class="${sizeClasses} rounded-full bg-gradient-to-br from-slate-700 to-blue-600 text-white flex items-center justify-center font-black shrink-0">${getInitials(name)}</div>`;
+        }
+
+        // ============================================================
+        // DATA — embedded sample (Performance Matrix export), replaceable via Upload
+        // ============================================================
+        const REAL_DATA = [{"id":"028016","name":"ติรวัฒน์ ภูมิบ่อพลับ","nickname":"โอ๊ค,TPH","group":"EDAI","type":"hq","unitCode":"EDAI","position":"ผู้จัดการทั่วไป - สาย Data & AI Strategy","department":"สาย Data & AI Strategy","level":"VP/DM","indivScore":79.04,"indivGrade":"A","deptScore":79.0,"deptGrade":"A"},{"id":"000123","name":"กิตติเดช ศุภกิจอุดมการณ์","nickname":"เดช,KDS","group":"EDAI","type":"hq","unitCode":"EDAI","position":"ผู้จัดการทั่วไป - สาย Enterprise Data Technology","department":"สาย Enterprise Data Technology","level":"VP/DM","indivScore":80.5,"indivGrade":"G","deptScore":84.25,"deptGrade":"G"},{"id":"082228","name":"ธอัจจิมา เจาะบำรุง","nickname":"ปริม, TMJ","group":"EDAI","type":"hq","unitCode":"EDAI","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Business Analytics","department":"ส่วน Business Analytics","level":"AVP/ADM","indivScore":76.54,"indivGrade":"A","deptScore":74.5,"deptGrade":"A"},{"id":"027174","name":"เทอดศักดิ์ ช้อยนิยม","nickname":"เทิด,TSC","group":"EDAI","type":"hq","unitCode":"EDAI","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Enterprise Analytics Platform","department":"ส่วน Enterprise Analytics Platform","level":"AVP/ADM","indivScore":81.54,"indivGrade":"G","deptScore":84.5,"deptGrade":"G"},{"id":"010288","name":"สมนึก แซ่ตั้ง","nickname":"กิม,SNS","group":"EDAI","type":"hq","unitCode":"EDAI","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Enterprise Data Development","department":"ส่วน Enterprise Data Development","level":"AVP/ADM","indivScore":80.6,"indivGrade":"G","deptScore":84.0,"deptGrade":"G"},{"id":"011252","name":"ศศิพิชญ์ แวงโสธรณ์","nickname":"ทรี,SPW","group":"EDAI","type":"hq","unitCode":"EDAI","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Data Analytics & Governance","department":"ส่วน Data Analytics & Governance","level":"AVP/ADM","indivScore":77.02,"indivGrade":"A","deptScore":76.0,"deptGrade":"A"},{"id":"082057","name":"ศุทธินี อัมพุช","nickname":"ฝน,SNA","group":"GSP","type":"hq","unitCode":"GSP","position":"ผู้จัดการทั่วไป - สายสรรหาสินค้า Private Brand","department":"สายสรรหาสินค้า Private Brand","level":"VP/DM","indivScore":76.76,"indivGrade":"A","deptScore":79.5,"deptGrade":"A"},{"id":"026363","name":"หรรษา จิตจาตุรันต์","nickname":"แนน,HSJ","group":"GSP","type":"hq","unitCode":"GSP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนออกแบบผลิตภัณฑ์ Private Brand","department":"ส่วนออกแบบผลิตภัณฑ์ Private Brand 1","level":"AVP/ADM","indivScore":76.72,"indivGrade":"A","deptScore":77.5,"deptGrade":"A"},{"id":"007336","name":"เบญจมาภรณ์ จันทร์อัมพร","nickname":"เอก,BPC","group":"GSP","type":"hq","unitCode":"GSP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Visual Merchandise & Packaging Design Private Brand","department":"ส่วน Visual Merchandise & Packaging Design Private Brand","level":"AVP/ADM","indivScore":76.44,"indivGrade":"A","deptScore":79.5,"deptGrade":"A"},{"id":"008710","name":"อมรรัตน์ แซ่อั้ง","nickname":"ฮวง,ARS","group":"GSP","type":"hq","unitCode":"GSP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนสรรหาสินค้า Private Brand","department":"ส่วนสรรหาสินค้า Private Brand BR FC","level":"AVP/ADM","indivScore":75.04,"indivGrade":"A","deptScore":72.0,"deptGrade":"A"},{"id":"020360","name":"นิรุตต์ เทวาดิเทพ","nickname":"เฟย,NRT","group":"GSP","type":"hq","unitCode":"GSP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนสรรหาสินค้า Private Brand","department":"ส่วนสรรหาสินค้า Private Brand DH DW PA BM OL GD PT HT PE BC","level":"AVP/ADM","indivScore":84.9,"indivGrade":"G","deptScore":82.0,"deptGrade":"G"},{"id":"008985","name":"น้ำผึ้ง ประทวน","nickname":"ผึ้ง,NPP","group":"GSP","type":"hq","unitCode":"GSP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนสรรหาสินค้า Private Brand","department":"ส่วนสรรหาสินค้า Private Brand FD BD FT LT","level":"AVP/ADM","indivScore":76.26,"indivGrade":"A","deptScore":76.75,"deptGrade":"A"},{"id":"075345","name":"ลักขณา นิพพานชัย","nickname":"หยก,LNN","group":"GSP","type":"hq","unitCode":"GSP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนสรรหาสินค้า Private Brand","department":"ส่วนสรรหาสินค้า Private Brand HO","level":"AVP/ADM","indivScore":78.1,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"031508","name":"มงคล จันทร์โต","nickname":"ลี,MKJ","group":"GSP","type":"hq","unitCode":"GSP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนตรวจสอบคุณภาพ Private Brand","department":"ส่วนตรวจสอบคุณภาพ Private Brand","level":"AVP/ADM","indivScore":79.86,"indivGrade":"A","deptScore":79.5,"deptGrade":"A"},{"id":"054931","name":"นภัทร ภูวิชญพงศ์","nickname":"นภัทร,NPH","group":"GSP","type":"hq","unitCode":"GSP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนออกแบบผลิตภัณฑ์ Private Brand","department":"ส่วนออกแบบผลิตภัณฑ์ Private Brand 2","level":"AVP/ADM","indivScore":75.26,"indivGrade":"A","deptScore":77.0,"deptGrade":"A"},{"id":"038960","name":"อรวรรณ ฉันทวุฒิวิบูลย์","nickname":"แอน,OWC","group":"GSP","type":"hq","unitCode":"GSP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนสรรหาสินค้า Private Brand","department":"ส่วนสรรหาสินค้า Private Brand PB ET HW","level":"AVP/ADM","indivScore":79.46,"indivGrade":"A","deptScore":84.5,"deptGrade":"G"},{"id":"031178","name":"ชานันท์ วัฒนสุนทร","nickname":"โจ๊ค,CNW","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้จัดการทั่วไป - สายทรัพยากรบุคคล","department":"สายทรัพยากรบุคคล","level":"VP/DM","indivScore":76.5,"indivGrade":"A","deptScore":79.89,"deptGrade":"A"},{"id":"019437","name":"วสุกานต์ พิธรัตน์","nickname":"นภ,WKP","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้จัดการทั่วไป - สายป้องกันการสูญเสีย","department":"สายป้องกันการสูญเสีย","level":"VP/DM","indivScore":77.36,"indivGrade":"A","deptScore":71.19,"deptGrade":"A"},{"id":"037612","name":"เอกพงศ์ กิตติสาร","nickname":"เอก,APK","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้จัดการทั่วไป - สายพัฒนาและฝึกอบรม","department":"สายพัฒนาและฝึกอบรม","level":"VP/DM","indivScore":72.46,"indivGrade":"I","deptScore":76.25,"deptGrade":"A"},{"id":"001606","name":"วิธิตา จันทร์แดง","nickname":"กุ้ง,WTC","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน People development","department":"ส่วน People Development","level":"AVP/ADM","indivScore":77.02,"indivGrade":"A","deptScore":77.75,"deptGrade":"A"},{"id":"002049","name":"วิชัย อรรฆยากร","nickname":"เอ๋,WCA","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนทรัพยากรบุคคลกลาง","department":"ส่วนทรัพยากรบุคคลกลาง","level":"AVP/ADM","indivScore":78.74,"indivGrade":"A","deptScore":77.05,"deptGrade":"A"},{"id":"001108","name":"สยาม สินภูวดล","nickname":"ฟลุ้ค,SSD","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริหารค่าตอบแทนและพัฒนาระบบงาน","department":"ส่วนบริหารค่าตอบแทนและพัฒนาระบบงาน","level":"AVP/ADM","indivScore":77.98,"indivGrade":"A","deptScore":76.0,"deptGrade":"A"},{"id":"024819","name":"เมธิญญ์ ตันติชำนาญกุล","nickname":"โอ๊ต,MTT","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนพัฒนาองค์กรและแรงงานสัมพันธ์","department":"ส่วนพัฒนาองค์กรและแรงงานสัมพันธ์","level":"AVP/ADM","indivScore":76.22,"indivGrade":"A","deptScore":73.6,"deptGrade":"A"},{"id":"013632","name":"วัชรพล สุวรรณชื่น","nickname":"อ้น,WSC","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้ช่วยผู้จัดการทั่วไป-ส่วนป้องกันการสูญเสีย","department":"ส่วนป้องกันการสูญเสีย 1","level":"AVP/ADM","indivScore":78.76,"indivGrade":"A","deptScore":71.14,"deptGrade":"A"},{"id":"012724","name":"โสพน ดุษฎี","nickname":"โส,SPD","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้ช่วยผู้จัดการทั่วไป-ส่วนป้องกันการสูญเสีย","department":"ส่วนป้องกันการสูญเสีย 2","level":"AVP/ADM","indivScore":78.2,"indivGrade":"A","deptScore":71.27,"deptGrade":"A"},{"id":"019369","name":"สุภชฎา ชูชื่น","nickname":"แทท,SDC","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนป้องกันการสูญเสีย","department":"ส่วนป้องกันการสูญเสีย 3","level":"AVP/ADM","indivScore":79.56,"indivGrade":"A","deptScore":71.14,"deptGrade":"A"},{"id":"000678","name":"ประสิทธิ์ สลุงอยู่","nickname":"ประสิทธิ์,PSS","group":"HRLP","type":"hq","unitCode":"HRLP","position":"ผู้ช่วยผู้จัดการทั่วไป-ส่วนป้องกันการสูญเสีย","department":"ส่วนป้องกันการสูญเสีย 5","level":"AVP/ADM","indivScore":78.2,"indivGrade":"A","deptScore":71.17,"deptGrade":"A"},{"id":"027770","name":"ไชยพร ดำรงวิริยาเวทย์","nickname":"ทัช,CPD","group":"IA","type":"hq","unitCode":"IA","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนตรวจสอบภายใน","department":"ส่วนตรวจสอบภายใน 1","level":"AVP/ADM","indivScore":70.04,"indivGrade":"I","deptScore":72.5,"deptGrade":"A"},{"id":"004010","name":"ลือชัย สุขพันธุ์ถาวร","nickname":"เอี๋ยว,LCS","group":"MCD_CT","type":"hq","unitCode":"MCD_CT","position":"ผู้จัดการทั่วไป - ส่วนจัดซื้อ Building Materials","department":"ส่วนจัดซื้อ Building Materials","level":"VP/DM","indivScore":82.12,"indivGrade":"G","deptScore":84.5,"deptGrade":"G"},{"id":"043771","name":"เรืองฤทธิ์ ชูปลอด","nickname":"ฤทธิ์,RRC","group":"MCD_CT","type":"hq","unitCode":"MCD_CT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดซื้อ Painting","department":"ส่วนจัดซื้อ Painting","level":"AVP/ADM","indivScore":79.54,"indivGrade":"A","deptScore":78.25,"deptGrade":"A"},{"id":"036254","name":"นันทพร รัตนแสงสุวรรณ","nickname":"นุ่น,NRA","group":"MCD_CT","type":"hq","unitCode":"MCD_CT","position":"ผู้ช่วยผู้จัดการทั่วไป - สายจัดซื้อ Door & Window","department":"สายจัดซื้อ Door & Window","level":"AVP/ADM","indivScore":81.8,"indivGrade":"G","deptScore":84.12,"deptGrade":"G"},{"id":"000070","name":"สุพัตรา พลกุล","nickname":"เอ,STP","group":"MCD_FCBR","type":"hq","unitCode":"MCD_FCBR","position":"ผู้จัดการทั่วไป - สายจัดซื้อ Ceramic","department":"สายจัดซื้อ Ceramic","level":"VP/DM","indivScore":80.76,"indivGrade":"G","deptScore":80.75,"deptGrade":"G"},{"id":"084085","name":"สุภรี นวรัตน์ธารา","nickname":"กี้,SRN","group":"MCD_FCBR","type":"hq","unitCode":"MCD_FCBR","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดซื้อ Bathroom Faucet","department":"ส่วนจัดซื้อ Bathroom Faucet","level":"AVP/ADM","indivScore":69.06,"indivGrade":"I","deptScore":67.6,"deptGrade":"I"},{"id":"003569","name":"จิรติพร ภูผาธรรม","nickname":"กุ๊กไก่,CPP","group":"MCD_FCBR","type":"hq","unitCode":"MCD_FCBR","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดซื้อ Bathroom Sanitary Ware","department":"ส่วนจัดซื้อ Bathroom Sanitary Ware","level":"AVP/ADM","indivScore":80.46,"indivGrade":"G","deptScore":80.45,"deptGrade":"G"},{"id":"001765","name":"เอกณัฏฐ์ สุขประเสริฐ","nickname":"โอ๋,ENS","group":"MCD_FCBR","type":"hq","unitCode":"MCD_FCBR","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนออกแบบเซรามิคและสุขภัณฑ์","department":"ส่วนออกแบบเซรามิคและสุขภัณฑ์","level":"AVP/ADM","indivScore":71.52,"indivGrade":"I","deptScore":71.5,"deptGrade":"A"},{"id":"038910","name":"กุลวลี พจมานวิพุธ","nickname":"ปู,KLP","group":"MCD_FCBR","type":"hq","unitCode":"MCD_FCBR","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดซื้อ Bathroom Accessory","department":"ส่วนจัดซื้อ Bathroom Accessory","level":"AVP/ADM","indivScore":75.8,"indivGrade":"A","deptScore":75.75,"deptGrade":"A"},{"id":"004318","name":"รุ่งทิวา ไชยช่วย","nickname":"รุ่ง,RWC","group":"MCD_FOL","type":"hq","unitCode":"MCD_FOL","position":"ผู้จัดการทั่วไป - สายจัดซื้อ Furniture","department":"สายจัดซื้อ Furniture","level":"VP/DM","indivScore":78.02,"indivGrade":"A","deptScore":73.58,"deptGrade":"A"},{"id":"021667","name":"กรกฎ พนโสภณกุล","nickname":"กุ๊กไก่,KKPA","group":"MCD_FOL","type":"hq","unitCode":"MCD_FOL","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดซื้อ Outdoor Living","department":"ส่วนจัดซื้อ Outdoor Living","level":"AVP/ADM","indivScore":80.5,"indivGrade":"G","deptScore":72.32,"deptGrade":"A"},{"id":"076307","name":"วรวรรณ อินทเส","nickname":"อุ๊ย,VVI","group":"MCD_HEP","type":"hq","unitCode":"MCD_HEP","position":"ผู้จัดการทั่วไป - สายจัดซื้อ The Power","department":"สายจัดซื้อ The Power","level":"VP/DM","indivScore":77.14,"indivGrade":"A","deptScore":74.35,"deptGrade":"A"},{"id":"081016","name":"พลอย ดาระกะมาศ","nickname":"พลอย,PDM","group":"MCD_HEP","type":"hq","unitCode":"MCD_HEP","position":"ผู้จัดการทั่วไป - สายจัดซื้อ Refrigerator","department":"สายจัดซื้อ Refrigerator","level":"VP/DM","indivScore":85.2,"indivGrade":"G+","deptScore":88.8,"deptGrade":"G+"},{"id":"082689","name":"สาธิมา พันธุมโกมล","nickname":"เอม,SMP","group":"MCD_HEP","type":"hq","unitCode":"MCD_HEP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนส่งเสริมการขาย และ Online Merchandise","department":"ส่วนส่งเสริมการขาย และ Online Merchandise Home Electric","level":"AVP/ADM","indivScore":80.36,"indivGrade":"G","deptScore":80.0,"deptGrade":"G"},{"id":"077363","name":"ณัฐเกียรติ ศรีพรประเสริฐ","nickname":"ณัฐ,NKS","group":"MCD_HEP","type":"hq","unitCode":"MCD_HEP","position":"ผู้ช่วยผู้จัดการทั่วไป - สายจัดซื้อ Air Conditioner","department":"สายจัดซื้อ Air Conditioner","level":"AVP/ADM","indivScore":87.02,"indivGrade":"G+","deptScore":91.8,"deptGrade":"E"},{"id":"078868","name":"รสานันท์ กอสุระ","nickname":"การ์ตูน,RNK","group":"MCD_HEP","type":"hq","unitCode":"MCD_HEP","position":"ผู้ช่วยผู้จัดการทั่วไป - สายจัดซื้อ Washing Machine","department":"สายจัดซื้อ Washing Machine","level":"AVP/ADM","indivScore":80.44,"indivGrade":"G","deptScore":80.8,"deptGrade":"G"},{"id":"013132","name":"ชนัดดา อภิบุญสุวรรณ","nickname":"เอ๋,CDA","group":"MCD_HLWS","type":"hq","unitCode":"MCD_HLWS","position":"ผู้จัดการทั่วไป - สายจัดซื้อ Plumbing","department":"สายจัดซื้อ Plumbing","level":"VP/DM","indivScore":81.84,"indivGrade":"G","deptScore":76.5,"deptGrade":"A"},{"id":"063742","name":"อรทัย กิ่งโกรก","nickname":"เปิ้ล,OTK","group":"MCD_HLWS","type":"hq","unitCode":"MCD_HLWS","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดซื้อ Tools","department":"ส่วนจัดซื้อ Tools","level":"AVP/ADM","indivScore":83.76,"indivGrade":"G","deptScore":78.59,"deptGrade":"A"},{"id":"001746","name":"ธัญยธรณ์ สิริโรจนรัตน์","nickname":"นุช,TTS","group":"MCD_HLWS","type":"hq","unitCode":"MCD_HLWS","position":"ผู้ช่วยผู้จัดการทั่วไป - สายจัดซื้อ Electric","department":"สายจัดซื้อ Electric","level":"AVP/ADM","indivScore":91.62,"indivGrade":"E","deptScore":91.2,"deptGrade":"E"},{"id":"000494","name":"นวรัตน์ ชิดชาญชัย","nickname":"นก,NRC","group":"MCD_HTL","type":"hq","unitCode":"MCD_HTL","position":"ผู้ช่วยผู้จัดการทั่วไป - สายจัดซื้อ Bedding","department":"สายจัดซื้อ Bedding","level":"AVP/ADM","indivScore":75.38,"indivGrade":"A","deptScore":68.65,"deptGrade":"I"},{"id":"005047","name":"โชตนา โยธาวุธ","nickname":"โช,CNY","group":"MCD_HTL","type":"hq","unitCode":"MCD_HTL","position":"ผู้ช่วยผู้จัดการทั่วไป - สายจัดซื้อ Lighting","department":"สายจัดซื้อ Lighting","level":"AVP/ADM","indivScore":75.0,"indivGrade":"A","deptScore":69.35,"deptGrade":"I"},{"id":"006765","name":"อัมพิกา วงค์พลับ","nickname":"จุ๋ม,UKW","group":"MCD_HTL","type":"hq","unitCode":"MCD_HTL","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดซื้อ Home Textiles","department":"ส่วนจัดซื้อ Home Textiles","level":"AVP/ADM","indivScore":75.54,"indivGrade":"A","deptScore":71.25,"deptGrade":"A"},{"id":"014973","name":"สุกัญญา อมรวาที","nickname":"จุ๋ม,SYA","group":"MCD_KHO","type":"hq","unitCode":"MCD_KHO","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดซื้อ Kitchen & Laundry","department":"ส่วนจัดซื้อ Kitchen & Laundry","level":"AVP/ADM","indivScore":75.32,"indivGrade":"A","deptScore":66.43,"deptGrade":"I"},{"id":"006172","name":"ธัญนินท์ อัญจินดาโรจน์","nickname":"อั้ง,TNU","group":"MCD_KHO","type":"hq","unitCode":"MCD_KHO","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดซื้อ Organizing & Cleaning","department":"ส่วนจัดซื้อ Organizing & Cleaning","level":"AVP/ADM","indivScore":75.66,"indivGrade":"A","deptScore":66.38,"deptGrade":"I"},{"id":"012247","name":"อรศิริ คงสุนทรกิจกุล","nickname":"เชอร์รี่,ORW","group":"MCD_KHO","type":"hq","unitCode":"MCD_KHO","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Omni Channel KHO และส่งเสริมการขาย HO&KC","department":"ส่วน Omni Channel KHO และส่งเสริมการขาย HO&KC","level":"AVP/ADM","indivScore":77.2,"indivGrade":"A","deptScore":78.34,"deptGrade":"A"},{"id":"016001","name":"นิจวรรณ แจ้งเกษมสุข","nickname":"นิจ,NWJ","group":"MCD_KHO","type":"hq","unitCode":"MCD_KHO","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดซื้อ Kitchen","department":"ส่วนจัดซื้อ Kitchen","level":"AVP/ADM","indivScore":75.4,"indivGrade":"A","deptScore":71.96,"deptGrade":"A"},{"id":"003536","name":"ฎัชพร ลิขิตสัจจากุล","nickname":"เล็ก,DPL","group":"MCD_KHO","type":"hq","unitCode":"MCD_KHO","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Strategic Direct Sourcing และส่งเสริมการขาย SA","department":"ส่วน Strategic Direct Sourcing และส่งเสริมการขาย SA","level":"AVP/ADM","indivScore":77.76,"indivGrade":"A","deptScore":78.95,"deptGrade":"A"},{"id":"000797","name":"อุมาภรณ์ เหล่าพูลศรี","nickname":"เปิ้ล,UPL","group":"MCD_KHO","type":"hq","unitCode":"MCD_KHO","position":"ผู้ช่วยผู้จัดการทั่วไป - สายจัดซื้อ Small Appliance","department":"สายจัดซื้อ Small Appliance","level":"AVP/ADM","indivScore":78.74,"indivGrade":"A","deptScore":69.33,"deptGrade":"I"},{"id":"008426","name":"เกษม พุฒิประภา","nickname":"อ้วน,KPP","group":"MTC","type":"hq","unitCode":"MTC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนวิศวกรรมและธุรการกลาง","department":"ส่วนวิศวกรรมและธุรการกลาง","level":"AVP/ADM","indivScore":78.98,"indivGrade":"A","deptScore":75.55,"deptGrade":"A"},{"id":"004506","name":"ภิญญาพัชญ์ เกิดพูล","nickname":"ปู,PKE","group":"MTC","type":"hq","unitCode":"MTC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Non trade Procurement","department":"ส่วน Non trade Procurement","level":"AVP/ADM","indivScore":82.66,"indivGrade":"G","deptScore":80.55,"deptGrade":"G"},{"id":"009422","name":"อัคราวิศย์ เพ็ญตระกูลชัย","nickname":"ตี๋,AVP","group":"MTC","type":"hq","unitCode":"MTC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Sustainable Procurement","department":"ส่วน Sustainable Procurement","level":"AVP/ADM","indivScore":82.26,"indivGrade":"G","deptScore":75.05,"deptGrade":"A"},{"id":"004401","name":"ณัฐทวี ทวีชัย","nickname":"ปอง,NTT","group":"MTC","type":"hq","unitCode":"MTC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนปฏิบัติการเปิดสาขา","department":"ส่วนปฏิบัติการเปิดสาขา","level":"AVP/ADM","indivScore":84.82,"indivGrade":"G","deptScore":79.9,"deptGrade":"A"},{"id":"013985","name":"ไกรสิทธิ ม่วงเขียว","nickname":"เก่ง,KSM","group":"MTC","type":"hq","unitCode":"MTC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริหารสัญญาและสิทธิประโยชน์ Non trade","department":"ส่วนบริหารสัญญาและสิทธิประโยชน์ Non trade","level":"AVP/ADM","indivScore":79.2,"indivGrade":"A","deptScore":73.9,"deptGrade":"A"},{"id":"004552","name":"ประวรรธน์ วิรุฬห์ชุติภรณ์","nickname":"บูร,PWW","group":"MTC","type":"hq","unitCode":"MTC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนปฏิบัติการเปิดสาขา","department":"ส่วนปฏิบัติการเปิดสาขา","level":"AVP/ADM","indivScore":74.56,"indivGrade":"I","deptScore":79.9,"deptGrade":"A"},{"id":"027284","name":"ยิ่งยศ จุฑากร","nickname":"อาร์ม,YYJ","group":"MTC","type":"hq","unitCode":"MTC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนปฏิบัติการเปิดสาขา","department":"ส่วนปฏิบัติการเปิดสาขา","level":"AVP/ADM","indivScore":79.8,"indivGrade":"A","deptScore":79.9,"deptGrade":"A"},{"id":"019888","name":"เกษม นิธิกรไกรวัฒน์","nickname":"เษม,KSN","group":"STD","type":"hq","unitCode":"STD","position":"ผู้จัดการทั่วไป - สายบริหารโครงการ","department":"สายบริหารโครงการ","level":"VP/DM","indivScore":83.2,"indivGrade":"G","deptScore":83.5,"deptGrade":"G"},{"id":"006516","name":"ทนิตย์ แสงพันธ์","nickname":"อ๊อด,TNS","group":"STD","type":"hq","unitCode":"STD","position":"ผู้ช่วยผู้จัดการทั่วไป - สายพัฒนาธุรกิจ","department":"สายพัฒนาธุรกิจ","level":"AVP/ADM","indivScore":79.42,"indivGrade":"A","deptScore":78.25,"deptGrade":"A"},{"id":"004005","name":"ประสงค์ อัศวพิภพ","nickname":"เส็ง,PSA","group":"STD","type":"hq","unitCode":"STD","position":"ผู้ช่วยผู้จัดการทั่วไป - สายออกแบบและวางผังโครงการ","department":"สายออกแบบและวางผังโครงการ","level":"AVP/ADM","indivScore":76.02,"indivGrade":"A","deptScore":75.75,"deptGrade":"A"},{"id":"036622","name":"เบญจวรรณ ศิลปพันธุ์","nickname":"เบญ,BWS","group":"STD","type":"hq","unitCode":"STD","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริหารและพัฒนาร้านค้า","department":"ส่วนบริหารและพัฒนาร้านค้า","level":"AVP/ADM","indivScore":76.74,"indivGrade":"A","deptScore":75.75,"deptGrade":"A"},{"id":"007898","name":"ณัฐวุฒิ กมศิลป์","nickname":"ปอ,NWK","group":"STD","type":"hq","unitCode":"STD","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนการตลาดศูนย์การค้า","department":"ส่วนการตลาดศูนย์การค้า","level":"AVP/ADM","indivScore":80.8,"indivGrade":"G","deptScore":80.5,"deptGrade":"G"},{"id":"002718","name":"ภรภัทร เอกภาพยิ่งยง","nickname":"คิ้ม,PPE","group":"STD","type":"hq","unitCode":"STD","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนงานราชการ","department":"ส่วนงานราชการ","level":"AVP/ADM","indivScore":80.32,"indivGrade":"G","deptScore":80.75,"deptGrade":"G"},{"id":"016670","name":"ศลิษา จิระสถานนท์","nickname":"สุ,SSJ","group":"STD","type":"hq","unitCode":"STD","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนจัดหาและพัฒนาที่ดิน","department":"ส่วนจัดหาและพัฒนาที่ดิน","level":"AVP/ADM","indivScore":78.42,"indivGrade":"A","deptScore":77.55,"deptGrade":"A"},{"id":"001294","name":"ธีรพงษ์ กุณาศล","nickname":"หนุ่ม,TPK","group":"STD","type":"hq","unitCode":"STD","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริหารโครงการ","department":"ส่วนบริหารโครงการ 1","level":"AVP/ADM","indivScore":79.4,"indivGrade":"A","deptScore":78.8,"deptGrade":"A"},{"id":"061632","name":"เบ็ญจมาศ ยงพะวิสัย","nickname":"เบ็ญ,BMY","group":"STD","type":"hq","unitCode":"STD","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนสรรหาร้านค้า","department":"ส่วนสรรหาร้านค้า","level":"AVP/ADM","indivScore":79.2,"indivGrade":"A","deptScore":79.25,"deptGrade":"A"},{"id":"016578","name":"พันสิน บุญทองใหม่","nickname":"น้อย,PSB","group":"STD","type":"hq","unitCode":"STD","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนออกแบบ Graphic","department":"ส่วนออกแบบ Graphic","level":"AVP/ADM","indivScore":78.58,"indivGrade":"A","deptScore":77.5,"deptGrade":"A"},{"id":"008460","name":"เศรษฐศักดิ์ ลาทอง","nickname":"หนุ่ม,SLT","group":"STD","type":"hq","unitCode":"STD","position":"ผู้จัดการศูนย์การค้ามาร์เก็ตวิลเลจ","department":"ส่วนศูนย์การค้า มาร์เก็ต วิลเลจ หัวหิน(HMV)","level":"AVP/ADM","indivScore":83.2,"indivGrade":"G","deptScore":83.5,"deptGrade":"G"},{"id":"043303","name":"นามศักดิ์ จันทร์เดือน","nickname":"จ๊อบ,NSC","group":"IB","type":"hq","unitCode":"IB","position":"ผู้จัดการทั่วไป - สาย International Business Development","department":"สาย International Business Development","level":"VP/DM","indivScore":72.0,"indivGrade":"I","deptScore":73.5,"deptGrade":"A"},{"id":"002041","name":"ปรมินทร์ ศรีวิโรจน์","nickname":"ปอ,PMS","group":"ACFN","type":"hq","unitCode":"ACFN","position":"ผู้จัดการทั่วไป - สายบัญชีและภาษี","department":"สายบัญชีและภาษี","level":"VP/DM","indivScore":81.94,"indivGrade":"G","deptScore":79.85,"deptGrade":"A"},{"id":"001372","name":"รัชวัลย์ ธนทรัพย์พรนภา","nickname":"กุ้ง,RWT","group":"ACFN","type":"hq","unitCode":"ACFN","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนการเงินสาขา","department":"ส่วนการเงินสาขา","level":"AVP/ADM","indivScore":81.4,"indivGrade":"G","deptScore":78.65,"deptGrade":"A"},{"id":"032683","name":"รัชดา เกียรตินิยมไทย","nickname":"หมิว,RDT","group":"ACFN","type":"hq","unitCode":"ACFN","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริหารการเงิน","department":"ส่วนบริหารการเงิน","level":"AVP/ADM","indivScore":84.92,"indivGrade":"G","deptScore":84.2,"deptGrade":"G"},{"id":"000072","name":"ธมนรัชต์ สินศรีวรินท์","nickname":"ดาว,TRS","group":"ACFN","type":"hq","unitCode":"ACFN","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบัญชีรายได้","department":"ส่วนบัญชีรายได้ Trade","level":"AVP/ADM","indivScore":83.24,"indivGrade":"G","deptScore":84.0,"deptGrade":"G"},{"id":"001004","name":"ลดารัตน์ ชมภูนุช","nickname":"บี,LRC","group":"ACFN","type":"hq","unitCode":"ACFN","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบัญชีขาย","department":"ส่วนบัญชีขาย","level":"AVP/ADM","indivScore":79.8,"indivGrade":"A","deptScore":78.0,"deptGrade":"A"},{"id":"003897","name":"สินีกานต์ เกตุเทศ","nickname":"นก,SKT","group":"ACFN","type":"hq","unitCode":"ACFN","position":"ผู้ช่วยผู้จัดการทั่วไป-ส่วนบัญชีเจ้าหนี้","department":"ส่วนบัญชีเจ้าหนี้ Trade","level":"AVP/ADM","indivScore":79.46,"indivGrade":"A","deptScore":78.0,"deptGrade":"A"},{"id":"011106","name":"รินรดา รุจิรวิมล","nickname":"เกียง,RDR","group":"ACFN","type":"hq","unitCode":"ACFN","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบัญชีรายได้ Non - Trade","department":"ส่วนบัญชีรายได้ Non - Trade","level":"AVP/ADM","indivScore":79.28,"indivGrade":"A","deptScore":79.25,"deptGrade":"A"},{"id":"005550","name":"ปนัดดา วีระกุล","nickname":"บี,PDV","group":"ACFN","type":"hq","unitCode":"ACFN","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบัญชีสินค้าคงคลัง","department":"ส่วนบัญชีสินค้าคงคลัง","level":"AVP/ADM","indivScore":80.18,"indivGrade":"G","deptScore":80.73,"deptGrade":"G"},{"id":"002334","name":"ศิรดา ธรรมจินดา","nickname":"ดาว,SDT","group":"IRSD","type":"hq","unitCode":"IRSD","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนแผนงานและงบประมาณ","department":"ส่วนแผนงานและงบประมาณ","level":"AVP/ADM","indivScore":88.26,"indivGrade":"G+","deptScore":80.75,"deptGrade":"G"},{"id":"040899","name":"สุชัชจ์ กุลยิ่งยง","nickname":"เอ็ม,SCK","group":"IRSD","type":"hq","unitCode":"IRSD","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนกลยุทธ์และนักลงทุนสัมพันธ์","department":"ส่วนกลยุทธ์และนักลงทุนสัมพันธ์","level":"AVP/ADM","indivScore":79.68,"indivGrade":"A","deptScore":78.5,"deptGrade":"A"},{"id":"031074","name":"นารีรัตน์ สิงห์ทอง","nickname":"นารี,NSI","group":"IRSD","type":"hq","unitCode":"IRSD","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนพัฒนาความยั่งยืนองค์กร","department":"ส่วนพัฒนาความยั่งยืนองค์กร","level":"AVP/ADM","indivScore":81.56,"indivGrade":"G","deptScore":80.5,"deptGrade":"G"},{"id":"003168","name":"กมลทิพย์ อมรอริยะกูล","nickname":"แหม่ม,KTA","group":"LGC","type":"hq","unitCode":"LGC","position":"ผู้จัดการทั่วไป-สายกฎหมายและกำกับดูแล","department":"สายกฎหมายและกำกับดูแล","level":"VP/DM","indivScore":78.26,"indivGrade":"A","deptScore":83.7,"deptGrade":"G"},{"id":"004503","name":"นิรุตติ์ ศุภเทวีกิจเจริญ","nickname":"อ๊อด,NRS","group":"LGC","type":"hq","unitCode":"LGC","position":"ผู้ช่วยผู้จัดการทั่วไป-ส่วนบังคับใช้ฎหมายและคดี","department":"ส่วนบังคับใช้ฎหมายและคดี","level":"AVP/ADM","indivScore":82.78,"indivGrade":"G","deptScore":90.0,"deptGrade":"E"},{"id":"010164","name":"ธีรพงษ์ ธรรมริยา","nickname":"ที,TTY","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้จัดการทั่วไป - สาย Home Improvement","department":"สาย Home Improvement","level":"VP/DM","indivScore":82.14,"indivGrade":"G","deptScore":74.63,"deptGrade":"A"},{"id":"069558","name":"ศรัณญู สาครสุขศรีฤกษ์","nickname":"ป๊อบ,SRY","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Engineering Management","department":"ส่วน Engineering Management","level":"AVP/ADM","indivScore":77.7,"indivGrade":"A","deptScore":78.4,"deptGrade":"A"},{"id":"030725","name":"วรกิจ นามวิชัย","nickname":"ต๊อก,WKN","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริการบำรุงรักษาและซ่อมเครื่องใช้ไฟฟ้า","department":"ส่วนบริการบำรุงรักษาและซ่อมเครื่องใช้ไฟฟ้า","level":"AVP/ADM","indivScore":76.2,"indivGrade":"A","deptScore":76.5,"deptGrade":"A"},{"id":"014333","name":"นิภาพร เอี่ยมแดง","nickname":"หนุ่ย,NPE","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Delivery Service","department":"ส่วน Delivery Service","level":"AVP/ADM","indivScore":80.9,"indivGrade":"G","deptScore":84.5,"deptGrade":"G"},{"id":"006296","name":"วีรศักดิ์ คำลือ","nickname":"แจ็ค,WSK","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Home Improvement","department":"ส่วน Home Improvement 1","level":"AVP/ADM","indivScore":78.88,"indivGrade":"A","deptScore":79.5,"deptGrade":"A"},{"id":"003876","name":"กวินรัตน์ ถมคำ","nickname":"เฟิร์ส,KRT","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Installation Service","department":"ส่วน Installation Service","level":"AVP/ADM","indivScore":81.6,"indivGrade":"G","deptScore":78.75,"deptGrade":"A"},{"id":"006770","name":"สิทธิชัย สุขสมพงษ์","nickname":"กรุง,SCP","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนขายบริการช่างโฮมโปร","department":"ส่วนขายบริการช่างโฮมโปร","level":"AVP/ADM","indivScore":78.44,"indivGrade":"A","deptScore":77.5,"deptGrade":"A"},{"id":"027551","name":"สันชัย เลิศชัยกิตติไพศาล","nickname":"สัน,SCL","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนพัฒนาธุรกิจช่างโฮมโปร","department":"ส่วนพัฒนาธุรกิจช่างโฮมโปร","level":"AVP/ADM","indivScore":83.86,"indivGrade":"G","deptScore":83.75,"deptGrade":"G"},{"id":"034526","name":"กฤตานน ยานุพรหม","nickname":"เติ้ล,KNY","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Installation & B2B Service","department":"ส่วน Installation & B2B Service","level":"AVP/ADM","indivScore":80.38,"indivGrade":"G","deptScore":80.65,"deptGrade":"G"},{"id":"038908","name":"สุวกิจรัตน์ อยู่ยง","nickname":"ต้อง,SYY","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริการออกแบบ","department":"ส่วนบริการออกแบบ","level":"AVP/ADM","indivScore":80.2,"indivGrade":"G","deptScore":83.5,"deptGrade":"G"},{"id":"010560","name":"อัญชลีพร อุณรุทธ์","nickname":"ตุ๊กตา,UPO","group":"CHP","type":"hq","unitCode":"CHP","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริหารคิวและธุรการจัดส่งติดตั้ง","department":"ส่วนบริหารคิวและธุรการจัดส่งติดตั้ง","level":"AVP/ADM","indivScore":76.26,"indivGrade":"A","deptScore":77.5,"deptGrade":"A"},{"id":"007299","name":"วาสนา ศรีเย็น","nickname":"เจี๊ยบ,WNS","group":"DCS","type":"hq","unitCode":"DCS","position":"ผู้จัดการทั่วไป","department":"สายบริหารศูนย์กระจายสินค้า 1","level":"VP/DM","indivScore":76.52,"indivGrade":"A","deptScore":72.35,"deptGrade":"A"},{"id":"083957","name":"กฤษณ์ จันทร์งาม","nickname":"กฤษณ์,KCH","group":"MCD_FOL","type":"hq","unitCode":"DCS","position":"ผู้จัดการทั่วไป","department":"สายบริหารศูนย์กระจายสินค้า 2","level":"VP/DM","indivScore":77.58,"indivGrade":"A","deptScore":73.05,"deptGrade":"A"},{"id":"011437","name":"ธีระทัศน์ เรืองวุฒิ","nickname":"วุฒิ,TTR","group":"DCS","type":"hq","unitCode":"DCS","position":"ผู้จัดการทั่วไป","department":"สายวิศวกรรมและพัฒนามาตรฐาน","level":"VP/DM","indivScore":78.52,"indivGrade":"A","deptScore":73.35,"deptGrade":"A"},{"id":"020178","name":"สุรพงษ์ บุญประกอบ","nickname":"ต้อง,SPB","group":"DCS","type":"hq","unitCode":"DCS","position":"ผู้ช่วยผู้จัดการทั่วไป","department":"ส่วนปฏิบัติการศูนย์กระจายสินค้า 2","level":"AVP/ADM","indivScore":76.36,"indivGrade":"A","deptScore":72.75,"deptGrade":"A"},{"id":"084550","name":"อภิวัฒน์ ปานาราช","nickname":"โอม,AWP","group":"DCS","type":"hq","unitCode":"DCS","position":"ผู้ช่วยผู้จัดการทั่วไป","department":"ส่วนปฏิบัติการศูนย์กระจายสินค้า 3","level":"AVP/ADM","indivScore":79.2,"indivGrade":"A","deptScore":74.55,"deptGrade":"A"},{"id":"078432","name":"ทยาวี ไชยช่วย","nickname":"จิ๊บ,TWC","group":"MCD_HEP","type":"hq","unitCode":"DCS","position":"ผู้ช่วยผู้จัดการทั่วไป","department":"ส่วนปฏิบัติการศูนย์กระจายสินค้า 5","level":"AVP/ADM","indivScore":78.9,"indivGrade":"A","deptScore":73.3,"deptGrade":"A"},{"id":"004154","name":"อรอุมา ชำรวย","nickname":"อร,OMC","group":"DCS","type":"hq","unitCode":"DCS","position":"ผู้ช่วยผู้จัดการทั่วไป","department":"ส่วน Total Quality Management","level":"AVP/ADM","indivScore":75.0,"indivGrade":"A","deptScore":71.75,"deptGrade":"A"},{"id":"005547","name":"บุลเสฏฐ์ เฮ็งนิรันดร","nickname":"ป๊อบ,BSH","group":"DCS","type":"hq","unitCode":"DCS","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนทรัพยากรบุคคล","department":"ส่วนทรัพยากรบุคคล","level":"AVP/ADM","indivScore":76.54,"indivGrade":"A","deptScore":71.4,"deptGrade":"A"},{"id":"054065","name":"พรณภา วิชาผา","nickname":"การ์ตูน,PPW","group":"CHP","type":"hq","unitCode":"DCS","position":"ผู้ช่วยผู้จัดการทั่วไป","department":"ส่วนพัฒนามาตรฐานและวิเคราะห์ข้อมูล","level":"AVP/ADM","indivScore":83.34,"indivGrade":"G","deptScore":75.9,"deptGrade":"A"},{"id":"079300","name":"พศวัต ตุนพร","nickname":"แบงค์,PWT","group":"HRLP","type":"hq","unitCode":"DCS","position":"ผู้ช่วยผู้จัดการทั่วไป","department":"ส่วนวิศวกรรมงานซ่อมบำรุง","level":"AVP/ADM","indivScore":79.6,"indivGrade":"A","deptScore":73.85,"deptGrade":"A"},{"id":"015679","name":"นพรัตน์ อุดมลาภ","nickname":"หนึ่ง,NRU","group":"DCS","type":"hq","unitCode":"DCS","position":"ผู้ช่วยผู้จัดการทั่วไป","department":"ส่วนวิศวกรรมและงานระบบ","level":"AVP/ADM","indivScore":78.66,"indivGrade":"A","deptScore":73.55,"deptGrade":"A"},{"id":"047652","name":"นุสรา ลีลาภรณ์","nickname":"หน่อง,NRL","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้จัดการทั่วไป - สายบริการระบบสนับสนุนงานจัดซื้อ","department":"สายบริการระบบสนับสนุนงานจัดซื้อ","level":"VP/DM","indivScore":77.16,"indivGrade":"A","deptScore":70.0,"deptGrade":"A"},{"id":"027661","name":"วรวรรณ เรืองยศวรรธน์","nickname":"กิ๊ฟ,VWR","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้จัดการทั่วไป - สายบริการระบบสำนักงานกลาง","department":"สายบริการระบบสำนักงานกลาง","level":"VP/DM","indivScore":79.66,"indivGrade":"A","deptScore":77.5,"deptGrade":"A"},{"id":"009187","name":"อุบลรัตน์ พรหมสาขา ณ สกลนคร","nickname":"ปลา,URP","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้จัดการทั่วไป - สายบริการระบบสนับสนุนงานขายและจัดส่ง","department":"สายบริการระบบสนับสนุนงานขายและจัดส่ง","level":"VP/DM","indivScore":77.24,"indivGrade":"A","deptScore":71.5,"deptGrade":"A"},{"id":"014493","name":"วิรุญ อังกุรรัชต์","nickname":"เอก,WRU","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริหาร Application Platform และ Data Center","department":"ส่วนบริหาร Application Platform และ Data Center","level":"AVP/ADM","indivScore":81.86,"indivGrade":"G","deptScore":79.75,"deptGrade":"A"},{"id":"009180","name":"อมฤต เกษตรเวทิน","nickname":"อาร์, ARK","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนวิเคราะห์และพัฒนาระบบ Mobile Application","department":"ส่วนวิเคราะห์และพัฒนาระบบ Mobile Application","level":"AVP/ADM","indivScore":79.08,"indivGrade":"A","deptScore":71.5,"deptGrade":"A"},{"id":"005786","name":"อรนุช จันสุข","nickname":"นก,ONC","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนสนับสนุนงานเทคโนโลยีสารสนเทศ","department":"ส่วนสนับสนุนงานเทคโนโลยีสารสนเทศ","level":"AVP/ADM","indivScore":79.44,"indivGrade":"A","deptScore":71.0,"deptGrade":"A"},{"id":"003882","name":"ธนวิทย์ สิทธิวงศ์","nickname":"ต๊ะ,TWS","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริการระบบ SAP - Sales และ Inventory Management","department":"ส่วนบริการระบบ SAP - Sales และ Inventory Management","level":"AVP/ADM","indivScore":78.02,"indivGrade":"A","deptScore":77.5,"deptGrade":"A"},{"id":"026836","name":"ศิริวรรณ รุดทองจันทร์","nickname":"อ้อม,SWR","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริการระบบงานบุคคลและการเชื่อมต่อระบบงาน","department":"ส่วนบริการระบบงานบุคคลและการเชื่อมต่อระบบงาน","level":"AVP/ADM","indivScore":81.4,"indivGrade":"G","deptScore":77.5,"deptGrade":"A"},{"id":"009175","name":"สุราณี พันธุ์กระวี","nickname":"หนิง,SNP","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริการระบบสนับสนุนงานขายและจัดส่ง","department":"ส่วนบริการระบบสนับสนุนงานขายและจัดส่ง","level":"AVP/ADM","indivScore":77.2,"indivGrade":"A","deptScore":71.5,"deptGrade":"A"},{"id":"034010","name":"สุนันทา มีชนะ","nickname":"จอย,STM","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริการระบบงานฐานข้อมูลลูกค้าและบริหารโครงการ","department":"ส่วนบริการระบบงานฐานข้อมูลลูกค้าและบริหารโครงการ","level":"AVP/ADM","indivScore":79.66,"indivGrade":"A","deptScore":70.0,"deptGrade":"A"},{"id":"008451","name":"ธนันต์ วงศ์ภูวเมธานนท์","nickname":"หยาง,TNV","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริการระบบงานฐานข้อมูลสินค้าและคู่ค้า","department":"ส่วนบริการระบบงานฐานข้อมูลสินค้าและคู่ค้า","level":"AVP/ADM","indivScore":79.46,"indivGrade":"A","deptScore":70.0,"deptGrade":"A"},{"id":"019366","name":"ปริเวท เจริญศักดิ์","nickname":"ป๊อด,PWJ","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริหาร System Platform","department":"ส่วนบริหาร System Platform","level":"AVP/ADM","indivScore":76.82,"indivGrade":"A","deptScore":79.75,"deptGrade":"A"},{"id":"030809","name":"ศิวพร วิชัย","nickname":"ติ๊ก,SWW","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนมาตรฐานการปฏิบัติการด้านเทคโนโลยีสารสนเทศและความปลอดภัยทางไซเบอร์","department":"ส่วนมาตรฐานการปฏิบัติการด้านเทคโนโลยีสารสนเทศและความปลอดภัยทางไซเบอร์","level":"AVP/ADM","indivScore":76.22,"indivGrade":"A","deptScore":72.0,"deptGrade":"A"},{"id":"012124","name":"ปวัน ศิลปชัย","nickname":"ตั้ว,PWS","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนวิเคราะห์และพัฒนาระบบงานขาย","department":"ส่วนวิเคราะห์และพัฒนาระบบงานขาย","level":"AVP/ADM","indivScore":85.28,"indivGrade":"G+","deptScore":71.5,"deptGrade":"A"},{"id":"016008","name":"นิภัทร์ ปัญจสมานวงศ์","nickname":"ป๊อก,NPW","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนวิเคราะห์และพัฒนาระบบงานจัดส่ง","department":"ส่วนวิเคราะห์และพัฒนาระบบงานจัดส่ง","level":"AVP/ADM","indivScore":77.36,"indivGrade":"A","deptScore":71.5,"deptGrade":"A"},{"id":"000714","name":"บุญส่ง หมอปุย","nickname":"เอ๋,BSM","group":"ICT","type":"hq","unitCode":"ICT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนอบรมและบริการผู้ใช้งานระบบ","department":"ส่วนอบรมและบริการผู้ใช้งานระบบ","level":"AVP/ADM","indivScore":75.06,"indivGrade":"A","deptScore":75.25,"deptGrade":"A"},{"id":"028931","name":"ภัททิรา ปิ่นอนงค์","nickname":"เก้,PPI","group":"IM","type":"hq","unitCode":"IM","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Capacity & Fulfillment","department":"ส่วน Capacity & Fulfillment","level":"AVP/ADM","indivScore":77.2,"indivGrade":"A","deptScore":75.25,"deptGrade":"A"},{"id":"034789","name":"วิษณุ ป้านภูมิ","nickname":"โจ,VNP","group":"IM","type":"hq","unitCode":"IM","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน  DC Inventory Import","department":"ส่วน DC Inventory - Import","level":"AVP/ADM","indivScore":77.6,"indivGrade":"A","deptScore":76.0,"deptGrade":"A"},{"id":"036857","name":"ธนัต เลิศอนุสรณ์","nickname":"นัต,TNL","group":"IM","type":"hq","unitCode":"IM","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Store Inventory Base Line","department":"ส่วน Store Inventory - Base Line","level":"AVP/ADM","indivScore":76.7,"indivGrade":"A","deptScore":74.3,"deptGrade":"A"},{"id":"028291","name":"นันทิดา รัตนบัณฑิตสกุล","nickname":"เบิร์ด,NDR","group":"IM","type":"hq","unitCode":"IM","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Store Inventory Core Line","department":"ส่วน Store Inventory - Core Line","level":"AVP/ADM","indivScore":77.7,"indivGrade":"A","deptScore":73.8,"deptGrade":"A"},{"id":"008459","name":"จุฑามาส จักราบาท","nickname":"อ้อ,JMJ","group":"IM","type":"hq","unitCode":"IM","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Data & System Control","department":"ส่วน Data & System Control","level":"AVP/ADM","indivScore":79.1,"indivGrade":"A","deptScore":76.25,"deptGrade":"A"},{"id":"013134","name":"ชัยวุฒ ฉิมน้อย","nickname":"เคน,CWC","group":"IM","type":"hq","unitCode":"IM","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน DC Inventory CPFR","department":"ส่วน DC Inventory - CPFR","level":"AVP/ADM","indivScore":80.38,"indivGrade":"G","deptScore":80.0,"deptGrade":"G"},{"id":"008361","name":"อิฑยา โกศลอดุลกิตต์","nickname":"โบว์,IYK","group":"IM","type":"hq","unitCode":"IM","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน DC Inventory Local","department":"ส่วน DC Inventory - Local","level":"AVP/ADM","indivScore":76.0,"indivGrade":"A","deptScore":76.2,"deptGrade":"A"},{"id":"030724","name":"ยลพัชร์ พรสินีถิรธนา","nickname":"ตั๊ก,YPP","group":"IM","type":"hq","unitCode":"IM","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Inventory & Optimization","department":"ส่วน Inventory & Optimization","level":"AVP/ADM","indivScore":78.1,"indivGrade":"A","deptScore":78.95,"deptGrade":"A"},{"id":"010841","name":"ปริญญา วีระพันธ์","nickname":"มิก,PYW","group":"IM","type":"hq","unitCode":"IM","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Inventory Risk Control","department":"ส่วน Inventory Risk Control","level":"AVP/ADM","indivScore":77.9,"indivGrade":"A","deptScore":75.5,"deptGrade":"A"},{"id":"019355","name":"ชนนิษฏ์ อัศวจินตจิตร์","nickname":"หลิม,CNA","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้จัดการทั่วไป - สาย Digital Business Operation","department":"สาย Digital Business Operation","level":"VP/DM","indivScore":80.0,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"080089","name":"บารมีพร ศิริลักษณ์","nickname":"หยก,BPS","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน HomePro Living Marketplace","department":"ส่วน HomePro Living Marketplace","level":"AVP/ADM","indivScore":79.72,"indivGrade":"A","deptScore":88.5,"deptGrade":"G+"},{"id":"077227","name":"วรรณรัตน์ สินสมบูรณ์","nickname":"เมษ์,WRS","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน HomePro Mall","department":"ส่วน HomePro Mall","level":"AVP/ADM","indivScore":84.1,"indivGrade":"G","deptScore":84.5,"deptGrade":"G"},{"id":"002509","name":"อรุณภัสร์ เปรมพงศ์วรพล","nickname":"ลักษณ์,NLP","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Merchandise E-Commerce Fulfillment","department":"ส่วน Merchandise E-Commerce Fulfillment","level":"AVP/ADM","indivScore":75.14,"indivGrade":"A","deptScore":83.0,"deptGrade":"G"},{"id":"066154","name":"มลฤดี กฤตยานำสิน","nickname":"มล,MDK","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป-ส่วน Business Development","department":"ส่วน Business Development","level":"AVP/ADM","indivScore":83.96,"indivGrade":"G","deptScore":81.0,"deptGrade":"G"},{"id":"055582","name":"วิภารัตน์ ขมเล็ก","nickname":"หญิง,VRK","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Merchandise Center & Digital Content","department":"ส่วน Merchandise Center & Digital Content","level":"AVP/ADM","indivScore":79.58,"indivGrade":"A","deptScore":80.0,"deptGrade":"G"},{"id":"044002","name":"พรรษาวดี สัสดีแพง","nickname":"แหม่ม,PDS","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน New Business","department":"ส่วน New Business","level":"AVP/ADM","indivScore":79.98,"indivGrade":"A","deptScore":81.0,"deptGrade":"G"},{"id":"023273","name":"อภิชาติ เลิศวรญาณ","nickname":"ตี๋,ACL","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน System Development - Back End","department":"ส่วน System Development - Back End","level":"AVP/ADM","indivScore":80.0,"indivGrade":"G","deptScore":81.0,"deptGrade":"G"},{"id":"054936","name":"อุษามาส ยิ้มถนอม","nickname":"ษา,UMY","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Merchandise E-Commerce Hardline & Softline","department":"ส่วน Merchandise E-Commerce Hardline & Softline","level":"AVP/ADM","indivScore":84.2,"indivGrade":"G","deptScore":89.5,"deptGrade":"G+"},{"id":"011614","name":"ณิฐิภา ละม้ายศรี","nickname":"นิศ,NPL","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Order Processing Operation","department":"ส่วน Order Processing Operation","level":"AVP/ADM","indivScore":83.2,"indivGrade":"G","deptScore":85.5,"deptGrade":"G+"},{"id":"060708","name":"วัชระ กิตติคำ","nickname":"บอย,WRK","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน System Development - Front End","department":"ส่วน System Development - Front End","level":"AVP/ADM","indivScore":80.0,"indivGrade":"G","deptScore":80.0,"deptGrade":"G"},{"id":"060561","name":"กฤษณพัฒน์ กาญจนเตมีย์","nickname":"ท็อป,KPM","group":"DMC","type":"hq","unitCode":"DMC","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน System Development - Mobile Application","department":"ส่วน System Development - Mobile Application","level":"AVP/ADM","indivScore":79.94,"indivGrade":"A","deptScore":80.5,"deptGrade":"G"},{"id":"067094","name":"ณพล ก่อก้องวิศรุต","nickname":"นิว,NKR","group":"MKT","type":"hq","unitCode":"MKT","position":"ผู้จัดการทั่วไป - สาย Eco - Systems","department":"สาย Eco - Systems","level":"VP/DM","indivScore":82.0,"indivGrade":"G","deptScore":86.35,"deptGrade":"G+"},{"id":"062195","name":"พงศธร ตั้งเสรีจิตสกุล","nickname":"ธร,PTK","group":"MKT","type":"hq","unitCode":"MKT","position":"ผู้จัดการทั่วไป - สาย Payment Strategy","department":"สาย Payment Strategy","level":"VP/DM","indivScore":78.0,"indivGrade":"A","deptScore":83.75,"deptGrade":"G"},{"id":"076178","name":"แกร่ง โฆรีรัตน์","nickname":"แกร่ง,KKR","group":"MKT","type":"hq","unitCode":"MKT","position":"ผู้จัดการทั่วไป - สาย Customer Loyalty","department":"สาย Customer Loyalty","level":"VP/DM","indivScore":79.0,"indivGrade":"A","deptScore":84.5,"deptGrade":"G"},{"id":"071173","name":"อังคณา มงคลครุธ","nickname":"มีมี่,ANM","group":"MKT","type":"hq","unitCode":"MKT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Branding","department":"ส่วน Branding","level":"AVP/ADM","indivScore":81.0,"indivGrade":"G","deptScore":85.5,"deptGrade":"G+"},{"id":"071272","name":"ทัศนวรรณ แก้วใส","nickname":"ปุ๊ก,TSW","group":"MKT","type":"hq","unitCode":"MKT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Customer Insight & Analytics","department":"ส่วน Customer Insight & Analytics","level":"AVP/ADM","indivScore":83.1,"indivGrade":"G","deptScore":83.0,"deptGrade":"G"},{"id":"077393","name":"อภิมนตรี ดวงจันทร์","nickname":"น๊อค,ATD","group":"MKT","type":"hq","unitCode":"MKT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Trade - in","department":"ส่วน Trade - in","level":"AVP/ADM","indivScore":81.72,"indivGrade":"G","deptScore":86.5,"deptGrade":"G+"},{"id":"070301","name":"จริญญา ศรีประยูร","nickname":"แอน,JYS","group":"MKT","type":"hq","unitCode":"MKT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Acquisition & Portfolio Strategy","department":"ส่วน Acquisition Strategy & Portfolio Strategy","level":"AVP/ADM","indivScore":78.72,"indivGrade":"A","deptScore":79.25,"deptGrade":"A"},{"id":"011524","name":"เอกอาทิตย์ บุตรหมื่น","nickname":"เอก,ATB","group":"MKT","type":"hq","unitCode":"MKT","position":"ผู้ช่วยผู้จัดการทั่วไป  - ส่วน Corporate & Omni Campaign","department":"ส่วน Corporate & Omni Campaign","level":"AVP/ADM","indivScore":80.0,"indivGrade":"G","deptScore":78.55,"deptGrade":"A"},{"id":"084186","name":"ฐณภ อยู่เย็น","nickname":"บอย,TNY","group":"MKT","type":"hq","unitCode":"MKT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Creative & Production","department":"ส่วน Creative & Production","level":"AVP/ADM","indivScore":75.54,"indivGrade":"A","deptScore":81.5,"deptGrade":"G"},{"id":"062198","name":"ณัฐนนท์ แซ่แต้","nickname":"นนท์,NNS","group":"MKT","type":"hq","unitCode":"MKT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนส่งเสริมกลยุทธ์การตลาด","department":"ส่วนส่งเสริมกลยุทธ์การตลาด","level":"AVP/ADM","indivScore":81.0,"indivGrade":"G","deptScore":80.75,"deptGrade":"G"},{"id":"014229","name":"โชคชัย หอธรรมกุศล","nickname":"โชค,CCH","group":"OTS","type":"hq","unitCode":"OTS","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนพัฒนาระบบการปฏิบัติงาน","department":"ส่วนพัฒนาระบบการปฏิบัติงาน","level":"AVP/ADM","indivScore":81.6,"indivGrade":"G","deptScore":80.0,"deptGrade":"G"},{"id":"023057","name":"นวชล ทานศิลา","nickname":"ชล,NCT","group":"OTS","type":"hq","unitCode":"OTS","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนCustomer Satisfaction","department":"ส่วน Customer Satisfaction","level":"AVP/ADM","indivScore":79.8,"indivGrade":"A","deptScore":84.5,"deptGrade":"G"},{"id":"000938","name":"ประลองยุทธ์ ชมภูนุช","nickname":"แฮ็ค,PYC","group":"OTS","type":"hq","unitCode":"OTS","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนควบคุมมาตรฐานการปฏิบัติงาน","department":"ส่วนควบคุมมาตรฐานการปฏิบัติงาน","level":"AVP/ADM","indivScore":79.8,"indivGrade":"A","deptScore":79.75,"deptGrade":"A"},{"id":"074820","name":"ฉันทวัชร์ ธนะเสวี","nickname":"เต๋า,CWD","group":"OTS","type":"hq","unitCode":"OTS","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนพัฒนามาตรฐานการปฏิบัติงาน","department":"ส่วนพัฒนามาตรฐานการปฏิบัติงาน","level":"AVP/ADM","indivScore":79.8,"indivGrade":"A","deptScore":79.8,"deptGrade":"A"},{"id":"053263","name":"กมลวรรณ คลีดิษฐ","nickname":"ใบเฟริน,KWK","group":"OTS","type":"hq","unitCode":"OTS","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Instore Training","department":"ส่วน Instore Training","level":"AVP/ADM","indivScore":79.8,"indivGrade":"A","deptScore":79.8,"deptGrade":"A"},{"id":"019992","name":"ศิริรัตน์ พัฒนาภรณ์","nickname":"รัตน์,SRW","group":"OTS","type":"hq","unitCode":"OTS","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนปฏิบัติการ Customer Interaction Center","department":"ส่วนปฏิบัติการ Customer Interaction Center","level":"AVP/ADM","indivScore":79.8,"indivGrade":"A","deptScore":79.75,"deptGrade":"A"},{"id":"012906","name":"ชัญญา โตเจริญวิวัฒน์","nickname":"จัน,CYT","group":"OTS","type":"hq","unitCode":"OTS","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนสนับสนุนข้อมูลและรายงาน","department":"ส่วนสนับสนุนข้อมูลและรายงาน","level":"AVP/ADM","indivScore":85.4,"indivGrade":"G+","deptScore":85.0,"deptGrade":"G+"},{"id":"000321","name":"สุดเขตต์ ศรีโสภณ","nickname":"เขตต์,SKS","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้จัดการเขต 1","department":"เขต 1","level":"VP/DM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"001607","name":"สมชาย ศิรินาม","nickname":"แก้ว,SCS","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้จัดการเขต 2","department":"เขต 2","level":"VP/DM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"006581","name":"ปัญญา ปานสุวรรณ","nickname":"เป็ด,PYP","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้จัดการเขต 3","department":"เขต 3","level":"VP/DM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"003042","name":"เสกสรรค์ ศรีธรรมมา","nickname":"คิงส์,SSS","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้จัดการเขต 4","department":"เขต 4","level":"VP/DM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"000174","name":"สมศักดิ์ เยาวสังข์","nickname":"ศักดิ์,SSY","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการเขต 5","department":"เขต 5","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"002032","name":"สุเมธ เฮงมี","nickname":"เมธ,SMH","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการเขต 6","department":"เขต 6","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"054315","name":"เสกสรรย์ หัสเดชะ","nickname":"เสก,SSH","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการเขต 7","department":"เขต 7","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":69.0,"deptGrade":"I"},{"id":"004035","name":"เรวดี เกิดสุข","nickname":"เร,RDK","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการเขต 8","department":"เขต 8","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"002181","name":"อุทัยวรรณ ทองธิราช","nickname":"อุ๊,UTR","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการเขต 9","department":"เขต 9","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"003369","name":"สุภภณ กันภัย","nickname":"ภณ,SPK","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการเขต 10","department":"เขต 10","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"011698","name":"พิมพ์วรา พิมโชติวรสิริ","nickname":"โจ,PRP","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการเขต 11","department":"เขต 11","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"003383","name":"ศุภาวีร์ พงศ์อัตนนท์","nickname":"เก๋,SPN","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการเขต 12","department":"เขต 12","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"000113","name":"มิ่งขวัญ สินธุฉ่ำ","nickname":"ปุ้ย,MKS","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการเขต 13","department":"เขต 13","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"015205","name":"สันติ ก้าวเจริญ","nickname":"แซม,STK","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการเขต 14","department":"เขต 14","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"001484","name":"สถิตา สวยประดิษฐ์รัตน์","nickname":"หนอน,STS","group":"OPT 1","type":"store","unitCode":"OPT 1","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนธุรกิจ B2Bและชายแดน","department":"ส่วนธุรกิจ B2Bและชายแดน","level":"AVP/ADM","indivScore":82.0,"indivGrade":"G","deptScore":80.0,"deptGrade":"G"},{"id":"000858","name":"วรรณ์ชัย สุทธิสินทอง","nickname":"ยอด,WCS","group":"OPT 2","type":"store","unitCode":"OPT 2","position":"ผู้ช่วยผู้จัดการเขต 1","department":"เขต 1","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"012061","name":"ภูวินฬิ์ ภูวนารถ","nickname":"เอ,PWP","group":"OPT 2","type":"store","unitCode":"OPT 2","position":"ผู้ช่วยผู้จัดการเขต 2","department":"เขต 2","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"044928","name":"วุฒิภัทร สุวรรณศรี","nickname":"โหน่ง,WPS","group":"OPT 2","type":"store","unitCode":"OPT 2","position":"ผู้ช่วยผู้จัดการเขต 3","department":"เขต 3","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"009338","name":"นิตยา อินทร์นุ่น","nickname":"ต่าย,NYI","group":"OPT 2","type":"store","unitCode":"OPT 2","position":"ผู้ช่วยผู้จัดการทั่วไป - เขต 4","department":"เขต 4","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"045229","name":"กวินนาถ วรกาญจนนท์","nickname":"ตุ้ม,KNW","group":"OPT 2","type":"store","unitCode":"OPT 2","position":"ผู้ช่วยผู้จัดการเขต 5","department":"เขต 5","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":69.0,"deptGrade":"I"},{"id":"002103","name":"นพพร สิงหรา","nickname":"เป็ก,NPS","group":"OPT 2","type":"store","unitCode":"OPT 2","position":"ผู้จัดการเขต 6","department":"เขต 6","level":"VP/DM","indivScore":77.5,"indivGrade":"A","deptScore":69.0,"deptGrade":"I"},{"id":"019837","name":"กมลมาลย์ วันจรารัตต์","nickname":"เรยา,KMW","group":"OPT 2","type":"store","unitCode":"OPT 2","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วน Mega Home Online & Social","department":"ส่วน Mega Home Online & Social","level":"AVP/ADM","indivScore":78.9,"indivGrade":"A","deptScore":80.0,"deptGrade":"G"},{"id":"007293","name":"ปณตพร สุขคุ้ม","nickname":"ปุ๊ก,PSU","group":"OPT 2","type":"store","unitCode":"OPT 2","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนขายกลุ่มธุรกิจและโครงการ","department":"ส่วนขายกลุ่มธุรกิจและโครงการ MH","level":"AVP/ADM","indivScore":75.02,"indivGrade":"A","deptScore":80.0,"deptGrade":"G"},{"id":"000199","name":"วินัย วงษ์สัมฤทธิ์","nickname":"วินัย,WNW","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้จัดการเขตบริหารกลุ่มสินค้า 1","department":"เขตบริหารกลุ่มสินค้า 1","level":"VP/DM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"022782","name":"มนตรี หลักหาญ","nickname":"ตัน,MTL","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้จัดการเขตบริหารกลุ่มสินค้า 2","department":"เขตบริหารกลุ่มสินค้า 2","level":"VP/DM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"007582","name":"จิรวุฒิ กาญจนพิบูลย์","nickname":"ดิษ,JWK","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้จัดการเขตบริหารกลุ่มสินค้า 3","department":"เขตบริหารกลุ่มสินค้า 3","level":"VP/DM","indivScore":82.5,"indivGrade":"G","deptScore":75.0,"deptGrade":"A"},{"id":"003964","name":"วชิรัช รอดกลิ่น","nickname":"โอโม่,WRR","group":"OPT 2","type":"store","unitCode":"PMT","position":"ผู้ช่วยผู้จัดการทั่วไป - เขตบริหารกลุ่มสินค้า 4","department":"เขตบริหารกลุ่มสินค้า 4","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"003845","name":"ภิรมย์ สีลาเวียง","nickname":"ภิรมย์,PRS","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้ช่วยผู้จัดการเขตบริหารกลุ่มสินค้า 5","department":"เขตบริหารกลุ่มสินค้า 5","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":82.5,"deptGrade":"G"},{"id":"013465","name":"กฤติกา กนกโชติ","nickname":"เก๋,KKK","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้ช่วยผู้จัดการเขตบริหารกลุ่มสินค้า 6","department":"เขตบริหารกลุ่มสินค้า 6","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"019891","name":"อรศรี กิจจาพิพัฒน์","nickname":"อ้อย,OSK","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้ช่วยผู้จัดการเขตบริหารกลุ่มสินค้า 7","department":"เขตบริหารกลุ่มสินค้า 7","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":69.0,"deptGrade":"I"},{"id":"009526","name":"พนิตตา ตันติศรียานุรักษ์","nickname":"อ้อย,PTT","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้ช่วยผู้จัดการทั่วไป - เขตบริหารกลุ่มสินค้า 8","department":"เขตบริหารกลุ่มสินค้า 8","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"006575","name":"พัทธนันท์ บุญประเสริฐ","nickname":"นุช,PNB","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้ช่วยผู้จัดการทั่วไป - เขตบริหารกลุ่มสินค้า 9","department":"เขตบริหารกลุ่มสินค้า 9","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":69.0,"deptGrade":"I"},{"id":"003576","name":"แดน คำวัง","nickname":"แดน,DKV","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้ช่วยผู้จัดการทั่วไป - เขตบริหารกลุ่มสินค้า 10","department":"เขตบริหารกลุ่มสินค้า 10","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":75.0,"deptGrade":"A"},{"id":"008812","name":"พิพัฒน์ ดนูวัส","nickname":"ตู่,PPD","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริหารกลุ่มสินค้า","department":"ส่วนบริหารกลุ่มสินค้า MA AU IT VS","level":"AVP/ADM","indivScore":83.18,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"010928","name":"รวิกานต์ อุทัย","nickname":"พิกุล,RKU","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้ช่วยผู้จัดการทั่วไป - ส่วนบริหารกลุ่มสินค้า","department":"ส่วนบริหารกลุ่มสินค้า MH","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":82.5,"deptGrade":"G"},{"id":"000114","name":"ภนาพร พิณยะพันธ์","nickname":"พร,PPP","group":"PMT","type":"store","unitCode":"PMT","position":"ผู้จัดการสาขา","department":"สาขา HomePro EXPO & Fair","level":"AVP/ADM","indivScore":82.2,"indivGrade":"G","deptScore":75.0,"deptGrade":"A"},{"id":"064182","name":"ชลาลัย กมลลาวัณย์","nickname":"แก็ป,CLK","group":"OPT 2","type":"store","unitCode":"M001","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม รังสิต(RST)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"063060","name":"คุณหญิง ตันศิริ","nickname":"หญิง,KYT","group":"OPT 2","type":"store","unitCode":"M002","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม แม่สอด(MST)","level":"AVP/ADM","indivScore":87.5,"indivGrade":"G+","deptScore":87.5,"deptGrade":"G+"},{"id":"082871","name":"อิทธิพร ใสดี","nickname":"อรรถ,ISD","group":"OPT 2","type":"store","unitCode":"M003","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม หนองคาย(NKI)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":82.5,"deptGrade":"G"},{"id":"014946","name":"ชัยวัตร เพราะไธสง","nickname":"วัตร,CWP","group":"OPT 2","type":"store","unitCode":"M004","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม บ่อวิน(BWN)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"014346","name":"พนิตศิริ สกุลวิโรจน์","nickname":"บี,PSR","group":"OPT 2","type":"store","unitCode":"M005","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม กบินทร์บุรี(KBR)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"000737","name":"รัฐพล สมัคเสวี","nickname":"โอ๋,RPS","group":"PMT","type":"store","unitCode":"M006","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม มีนบุรี(MBR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"066708","name":"สุทธิศักดิ์ กองแก้ว","nickname":"ศักดิ์,SKK","group":"OPT 2","type":"store","unitCode":"M007","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม อรัญประเทศ(ART)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"009499","name":"ภิรดี ทับลอย","nickname":"ดาว,PDT","group":"PMT","type":"store","unitCode":"M008","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม โรจนะ(RJN)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"059842","name":"ธนิน เนียมทอง","nickname":"เวย์,TNN","group":"OPT 1","type":"store","unitCode":"M010","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม นครราชสีมา(NRM)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"016510","name":"กฤษณา โคตรอาสา","nickname":"กบ,KNS","group":"OPT 2","type":"store","unitCode":"M011","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม นครพนม(NPN)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"009244","name":"ดนิตา วราเมธารักษ์","nickname":"ตู่,DTW","group":"OPT 1","type":"store","unitCode":"M012","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม เชียงราย(CRI)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":69.0,"deptGrade":"I"},{"id":"045374","name":"รัฐศาสตร์ โนโชติ","nickname":"เด่น,RSN","group":"OPT 2","type":"store","unitCode":"M014","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม บางนาตราด(BNA)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"064770","name":"บัญชา แผนสง่า","nickname":"ตี้,BCP","group":"OPT 1","type":"store","unitCode":"M015","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม พัทยา(M015)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":82.5,"deptGrade":"G"},{"id":"062959","name":"ภูวนาถ ร่มโพธิ์ทอง","nickname":"ภู,PNR","group":"OPT 2","type":"store","unitCode":"M016","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม ฉะเชิงเทรา(M016)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"072459","name":"ปัญกร ภูริธันธนธร","nickname":"ณัฎฐ์,PYK","group":"OPT 1","type":"store","unitCode":"M017","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม สุราษฎร์ธานี(M017)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"067683","name":"ทิพย์เกษร มะลิพันธุ์","nickname":"ทิพย์,TSM","group":"OPT 2","type":"store","unitCode":"M018","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม รัตนาธิเบศร์(M018)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"060666","name":"ทัศนีย์ ดีปัญญา","nickname":"เก่ง,TND","group":"OPT 2","type":"store","unitCode":"M019","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม บางพลี(M019)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"067888","name":"วรรณา มธุรศิลป์","nickname":"ณา,WNM","group":"OPT 2","type":"store","unitCode":"M020","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม ติวานนท์(M020)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"052124","name":"โกศล เพชรนิล","nickname":"แมน,KPN","group":"OPT 2","type":"store","unitCode":"M021","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม นครปฐม(M021)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"003620","name":"เปมิกา เปรมชัยชิต","nickname":"เป,PKP","group":"OPT 1","type":"store","unitCode":"M022","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม เชียงใหม่(M022)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"005503","name":"พงศ์พันธ์ ฤทธิโรจน์","nickname":"กอล์ฟ,PPR","group":"OPT 2","type":"store","unitCode":"M023","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม บางแสน(M023)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":82.5,"deptGrade":"G"},{"id":"010669","name":"ณเริงชัย สุขมาศ","nickname":"เปิ้ล,NSM","group":"OPT 2","type":"store","unitCode":"M025","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม ทุ่งสง(M025)","level":"AVP/ADM","indivScore":87.5,"indivGrade":"G+","deptScore":82.5,"deptGrade":"G"},{"id":"000489","name":"ประภพ ปิยภาณีกุล","nickname":"ภพ,PPK","group":"OPT 2","type":"store","unitCode":"M026","position":"ผู้จัดการสาขา","department":"สาขาเมกาโฮม เวียงสระ(M026)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"002419","name":"ภัทรปภา อภิภัทรางกูร","nickname":"หญิง,PPA","group":"OPT 1","type":"store","unitCode":"S006","position":"ผู้จัดการสาขา","department":"สาขาพาราไดซ์พาร์ค(PDP)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"051204","name":"จุฬาทิพย์ ฟื้นสิน","nickname":"ชมพู่,JTF","group":"PMT","type":"store","unitCode":"S009","position":"ผู้จัดการสาขา","department":"สาขารัชดาภิเษก(RCD)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"001915","name":"สมภัสสร เยาวสังข์","nickname":"หนิง,SYS","group":"OPT 1","type":"store","unitCode":"S010","position":"ผู้จัดการสาขา","department":"สาขาเพลินจิต(PCT)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"003315","name":"เจตนิพัทธ์ พิทักษ์","nickname":"ขวัญ,JPP","group":"OPT 1","type":"store","unitCode":"S011","position":"ผู้จัดการสาขา","department":"สาขาภูเก็ต(PKT)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"081933","name":"ธนภร ธีรชัยกุลธร","nickname":"แมว,TTT","group":"OPT 1","type":"store","unitCode":"S012","position":"ผู้จัดการสาขา","department":"สาขาเชียงใหม่(CMI)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"082098","name":"ดนัย เพ็ชรประพันธ์กุล","nickname":"ออเล่,DNP","group":"OPT 1","type":"store","unitCode":"S013","position":"ผู้จัดการสาขา","department":"สาขารามคำแหง(RKH)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"021413","name":"เบญญาภา จันทร์จำปา","nickname":"ปู,BPP","group":"OPT 1","type":"store","unitCode":"S014","position":"ผู้จัดการสาขา","department":"สาขาพระราม2(RMA)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"003579","name":"วัชรินทร์ เฮงมี","nickname":"โจ๊ะ,WRH","group":"OPT 1","type":"store","unitCode":"S015","position":"ผู้จัดการสาขา","department":"สาขาประชาชื่น(PCC)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"070364","name":"ปริสรา จันทสีร์","nickname":"จิ๊๊บ, PRC","group":"OPT 1","type":"store","unitCode":"S016","position":"ผู้จัดการสาขา","department":"สาขาลาดพร้าว(LPO)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"018169","name":"พูลชัย หาริวร","nickname":"ชัย,PCH","group":"OPT 1","type":"store","unitCode":"S017","position":"ผู้จัดการสาขา","department":"สาขารามอินทรา(RIT)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"023756","name":"ณัฏฐพัฒ กอนแก้ว","nickname":"ป๋อง,NPK","group":"OPT 1","type":"store","unitCode":"S018","position":"ผู้จัดการสาขา","department":"สาขาพัทยา(PTY)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":75.0,"deptGrade":"A"},{"id":"025174","name":"ภัทรภร เพชรทอง","nickname":"จู,PPPE","group":"PMT","type":"store","unitCode":"S019","position":"ผู้จัดการสาขา","department":"สาขาแจ้งวัฒนะ(CWN)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"083847","name":"อชิรวัฒฒ์ ทวีสุข","nickname":"กล้า,AWT","group":"OPT 1","type":"store","unitCode":"S020","position":"ผู้จัดการสาขา","department":"สาขาหาดใหญ่(HYI)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"014971","name":"ธัญวรรณ ชัยรัตน์","nickname":"แนน,TWC","group":"OPT 1","type":"store","unitCode":"S021","position":"ผู้จัดการสาขา","department":"สาขาเพชรเกษม(PKS)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"000957","name":"วาสนา กิจสงสาร","nickname":"ปิ๊ก,WNK","group":"OPT 1","type":"store","unitCode":"S022","position":"ผู้จัดการสาขา","department":"สาขาราชพฤกษ์(RJP)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"002481","name":"อิสราพงศ์ ทองมณี","nickname":"โอ๋,IPT","group":"OPT 1","type":"store","unitCode":"S023","position":"ผู้จัดการสาขา","department":"สาขาหัวหิน(HHN)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"003249","name":"ทาน วินทา","nickname":"ทาน,TWT","group":"OPT 1","type":"store","unitCode":"S024","position":"ผู้จัดการสาขา","department":"สาขาสุวรรณภูมิ(SVB)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"011098","name":"อำภา แวดสูงเนิน","nickname":"เหมี่ยว,UPW","group":"OPT 1","type":"store","unitCode":"S025","position":"ผู้จัดการสาขา","department":"สาขาสมุย(SMI)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"013142","name":"แสงเงิน แสงทวีลาภ","nickname":"อ้อ,SSL","group":"OPT 1","type":"store","unitCode":"S026","position":"ผู้จัดการสาขา","department":"สาขาพิษณุโลก(PSL)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"005727","name":"ณัชชา โชติถิรวัฒน์","nickname":"จิ๊บ,NCC","group":"OPT 1","type":"store","unitCode":"S027","position":"ผู้จัดการสาขา","department":"สาขาขอนแก่น(KKN)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"009760","name":"อัญชสา โตพังเทียม","nickname":"จุ๋ม,AST","group":"OPT 1","type":"store","unitCode":"S028","position":"ผู้จัดการสาขา","department":"สาขาอุดรธานี(UDN)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"016143","name":"ปรางมะณี ชิณศรี","nickname":"ปราง,PNC","group":"OPT 2","type":"store","unitCode":"S030","position":"ผู้จัดการสาขา","department":"สาขาชลบุรี(CBR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"026318","name":"กรรณิการ์ กล้าณรงค์","nickname":"โป้ย,KNK","group":"OPT 2","type":"store","unitCode":"S031","position":"ผู้จัดการสาขา","department":"สาขาระยอง(RYG)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"074278","name":"ภูษณิศา ทาเอ้ย","nickname":"หน่อย,PST","group":"OPT 1","type":"store","unitCode":"S032","position":"ผู้จัดการสาขา","department":"สาขาหางดง(CMH)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":75.0,"deptGrade":"A"},{"id":"074439","name":"ดาลัด มีซี","nickname":"เนส,DLM","group":"OPT 1","type":"store","unitCode":"S033","position":"ผู้จัดการสาขา","department":"สาขาอยุธยา(AYY)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"068429","name":"ฐิติมา ชัยศิริ","nickname":"อุ๋ย,TMC","group":"OPT 1","type":"store","unitCode":"S034","position":"ผู้จัดการสาขา","department":"สาขากระบี่(KBI)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"003388","name":"อนัญญา พิทักษ์","nickname":"ตา,AYP","group":"OPT 1","type":"store","unitCode":"S035","position":"ผู้จัดการสาขา","department":"สาขาภูเก็ต - ฉลอง(PKC)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"077021","name":"วิสสุตา ธนบรรณวาณิชย์","nickname":"หมู,WTT","group":"OPT 1","type":"store","unitCode":"S036","position":"ผู้จัดการสาขา","department":"สาขาเขาใหญ่(KYI)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"029082","name":"สุวิมล นาคนวล","nickname":"หญิง,SMN","group":"OPT 2","type":"store","unitCode":"S037","position":"ผู้จัดการสาขา","department":"สาขานครปฐม(NKT)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"035581","name":"ปุญยาพร ทองภู","nickname":"ปุ้ย,PPT","group":"OPT 1","type":"store","unitCode":"S038","position":"ผู้จัดการสาขา","department":"สาขานครราชสีมา(NKM)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"021594","name":"สุนทรีย์ พันธุ์พาณิชย์","nickname":"นุ้ย,SRP","group":"PMT","type":"store","unitCode":"S039","position":"ผู้จัดการสาขา","department":"สาขาลำลูกกา(LLK)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"013441","name":"พิทักษ์พงศ์ ปุระเสทะ","nickname":"แจ๊ค,PTP","group":"OPT 1","type":"store","unitCode":"S040","position":"ผู้จัดการสาขา","department":"สาขาสุขาภิบาล3(SKB)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"054105","name":"พนิดา ทองชู","nickname":"เอ้,PTH","group":"OPT 2","type":"store","unitCode":"S041","position":"ผู้จัดการสาขา","department":"สาขานครศรีธรรมราช(NKR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"081386","name":"ชูเกียรติ คนหลัก","nickname":"แจ๊ค,CKK","group":"OPT 2","type":"store","unitCode":"S042","position":"ผู้จัดการสาขา","department":"สาขาฉะเชิงเทรา(CCS)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"033208","name":"สราวุฒิ ตรีพุฒ","nickname":"วุฒิ,SWT","group":"OPT 1","type":"store","unitCode":"S043","position":"ผู้จัดการสาขา","department":"สาขาร้อยเอ็ด(RET)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":75.0,"deptGrade":"A"},{"id":"082269","name":"คนึงนิจ ส่งศักดิ์ชัย","nickname":"กระแต,KSC","group":"OPT 1","type":"store","unitCode":"S044","position":"ผู้จัดการสาขา","department":"สาขาสุพรรณบุรี(SPR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"011601","name":"จิรเดช ศศิธรานนท์","nickname":"ออฟ,JDS","group":"OPT 1","type":"store","unitCode":"S046","position":"ผู้จัดการสาขา","department":"สาขาสกลนคร(SKK)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":75.0,"deptGrade":"A"},{"id":"006637","name":"สุชาดา เอ่งเซ่ง","nickname":"มิ้ง,SDE","group":"OPT 1","type":"store","unitCode":"S047","position":"ผู้จัดการสาขา","department":"สาขาตรัง(TRG)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"018427","name":"ศศิพินทุ์ ฐายินีศกุลชาติ","nickname":"หญิง,SSC","group":"PMT","type":"store","unitCode":"S048","position":"ผู้จัดการสาขา","department":"สาขาเมกาบางนา(MGB)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"009742","name":"สุกัญญา ประกิจวินิจพันธ์","nickname":"แอน,SYP","group":"OPT 1","type":"store","unitCode":"S049","position":"ผู้จัดการสาขา","department":"สาขาบุรีรัมย์(BRR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"014246","name":"อมายาวี ลำโป","nickname":"ม๊ะ,AVL","group":"OPT 1","type":"store","unitCode":"S050","position":"ผู้จัดการสาขา","department":"สาขาหาดใหญ่ - กาญจนวนิช(HYK)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"025731","name":"เรืองลักษณ์ เลาหสุขไพศาล","nickname":"แหง๋ว,RLL","group":"OPT 1","type":"store","unitCode":"S051","position":"ผู้จัดการสาขา","department":"สาขานครสวรรค์(NKW)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":75.0,"deptGrade":"A"},{"id":"057878","name":"อรอุมา เพชรวิสัย","nickname":"ก้อย,OMP","group":"OPT 1","type":"store","unitCode":"S052","position":"ผู้จัดการสาขา","department":"สาขามหาชัย(MHC)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"034229","name":"ชญาภา ทองวงศ์","nickname":"หมอก,CPT","group":"OPT 1","type":"store","unitCode":"S053","position":"ผู้จัดการสาขา","department":"สาขาอุบลราชธานี(UBN)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"000722","name":"เทียนชัย กอสุข","nickname":"โอ๊ต,TCK","group":"OPT 1","type":"store","unitCode":"S054","position":"ผู้จัดการสาขา","department":"สาขาราชบุรี(RBR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"077016","name":"พีระศรี นุชดอนไผ่","nickname":"เบน,BSN","group":"OPT 2","type":"store","unitCode":"S055","position":"ผู้จัดการสาขา","department":"สาขาจันทบุรี(CTR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"077628","name":"อรอุมา ประเสริฐอุ้ย","nickname":"กบ,OMT","group":"OPT 1","type":"store","unitCode":"S056","position":"ผู้จัดการสาขา","department":"สาขาชุมพร(CPN)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"012251","name":"พัชรินทร์ มณีเด่นดวง","nickname":"พัช,PRM","group":"OPT 2","type":"store","unitCode":"S057","position":"ผู้จัดการสาขา","department":"สาขาปราจีนบุรี(PCR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"003286","name":"ธนัท เปรมปรีชากุล","nickname":"พงษ์,TNK","group":"OPT 1","type":"store","unitCode":"S058","position":"ผู้จัดการสาขา","department":"สาขาสุราษฎร์ธานี(SRT)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"002442","name":"หนึ่งหทัย วิจิตรานนท์","nickname":"หนึ่ง,NTW","group":"OPT 1","type":"store","unitCode":"S059","position":"ผู้จัดการสาขา","department":"สาขากาญจนบุรี(KCR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"009248","name":"ปฐมะ ศีตะจิตต์","nickname":"ปู,PMJ","group":"OPT 1","type":"store","unitCode":"S060","position":"ผู้จัดการสาขา","department":"สาขาแพร่(PHE)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"002424","name":"ฤชุวี ชัยถาวรกิจ","nickname":"เจี๊ยบ,RWG","group":"OPT 1","type":"store","unitCode":"S061","position":"ผู้จัดการสาขา","department":"สาขาพุทธมณฑล สาย 5(PMT)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"064180","name":"พัทธนันท์ วัฒนสกุลไพศาล","nickname":"เก๋,PNW","group":"OPT 1","type":"store","unitCode":"S062","position":"ผู้จัดการสาขา","department":"สาขาสระบุรี (SRR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"011441","name":"รณิดา ชันมะเวส","nickname":"ตั้ม,RDC","group":"OPT 1","type":"store","unitCode":"S064","position":"ผู้จัดการสาขา","department":"สาขาชัยภูมิ (CYP)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"012505","name":"มานิต สมเดช","nickname":"แดง,MNS","group":"OPT 1","type":"store","unitCode":"S065","position":"ผู้จัดการสาขา","department":"สาขาเชียงราย (CRI)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"083412","name":"ชัยวัฒน์ วัชรสิริโรจน์","nickname":"เชน,CWR","group":"OPT 1","type":"store","unitCode":"S066","position":"ผู้จัดการสาขา","department":"สาขาเลย(LOI)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"002792","name":"ธงชัย ขัตติยะ","nickname":"ธง,TCY","group":"OPT 1","type":"store","unitCode":"S067","position":"ผู้จัดการสาขา","department":"สาขาลำปาง(LPG)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"010472","name":"ธนัชวรัตถ์ ฉัตร์มงคลจรัส","nickname":"ฟาร์,TRC","group":"OPT 1","type":"store","unitCode":"S068","position":"ผู้จัดการสาขา","department":"สาขาประจวบคีรีขันธ์(PCK)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"054926","name":"ดำรงค์เดช ลาน้ำคำ","nickname":"เดช,DDL","group":"OPT 1","type":"store","unitCode":"S069","position":"ผู้จัดการสาขา","department":"สาขาสุรินทร์(SRI)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"003672","name":"นงเยาว์ ส่างปาน","nickname":"เยาว์,NYS","group":"OPT 1","type":"store","unitCode":"S071","position":"ผู้จัดการสาขา","department":"สาขาสันทราย(CMS)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"002286","name":"ปานทิพย์ ชาญสูงเนิน","nickname":"หนิง,PTC","group":"OPT 1","type":"store","unitCode":"S072","position":"ผู้จัดการสาขา","department":"สาขาหัวทะเล(HTL)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"030627","name":"ภาวิณี แจ้งสรรพกิจ","nickname":"มด,PNJ","group":"OPT 2","type":"store","unitCode":"S073","position":"ผู้จัดการสาขา","department":"สาขาศรีราชา(SRC)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"001232","name":"จักรกฤช สุขสุวรรณ","nickname":"อิ๋ว,JKS","group":"OPT 1","type":"store","unitCode":"S074","position":"ผู้จัดการสาขา","department":"สาขาภูเก็ต - ถลาง(PKL)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"009231","name":"จิรัฎฐ์ ธรรมา","nickname":"เปิ้ล,JRT","group":"OPT 1","type":"store","unitCode":"S075","position":"ผู้จัดการสาขา","department":"สาขาพัทยาเหนือ(PYN)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"030004","name":"เอกรัฐ ดาวโสดอน","nickname":"ไมค์,ERD","group":"OPT 1","type":"store","unitCode":"S076","position":"ผู้จัดการสาขา","department":"สาขาสุโขทัย(SKT)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"081054","name":"ณิชวรีย์ ทองเมืองหลวง","nickname":"ณิชา,NTL","group":"OPT 1","type":"store","unitCode":"S078","position":"ผู้จัดการสาขา","department":"สาขาเพชรบุรี(PBR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"003512","name":"รัชณี ทองหนูเอียด","nickname":"รัช,RNT","group":"OPT 1","type":"store","unitCode":"S079","position":"ผู้จัดการสาขา","department":"สาขาพัทลุง(PTL)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"028361","name":"สราวุธ สิงห์สุวรรณ","nickname":"ใหญ่,SSW","group":"OPT 2","type":"store","unitCode":"S081","position":"ผู้จัดการสาขา","department":"สาขาชลบุรี - อมตะ 1(AMT)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"002385","name":"จันทรีญา กฤษ์กรันต์","nickname":"ดอย,JYK","group":"PMT","type":"store","unitCode":"S082","position":"ผู้จัดการสาขา","department":"สาขาชัยพฤกษ์(CYK)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"016458","name":"รภัทรพงษ์ กุลเนตร","nickname":"หนุ่ม,RPK","group":"OPT 1","type":"store","unitCode":"S083","position":"ผู้จัดการสาขา","department":"สาขาพระราม 3(RMT)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"001413","name":"ณฤทธชน สีนวล","nickname":"เจี๊ยบ,NCS","group":"OPT 1","type":"store","unitCode":"S084","position":"ผู้จัดการสาขา","department":"สาขาบางเสร่(BSR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"044304","name":"เอก ส่องสว่าง","nickname":"เอก,ASW","group":"OPT 1","type":"store","unitCode":"S085","position":"ผู้จัดการสาขา","department":"สาขาพระราม 9(RMN)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"023301","name":"ศศิวัลย์ ประสวนศรี","nickname":"ตูน,SWP","group":"OPT 1","type":"store","unitCode":"S086","position":"ผู้จัดการสาขา","department":"สาขาศรีนครินทร์(SKR)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"051714","name":"อัจฉรา ศิลปาจารย์","nickname":"เอฟฟี่ / เขียด,ASS","group":"PMT","type":"store","unitCode":"S091","position":"ผู้จัดการสาขา","department":"สาขากัลปพฤกษ์(KLP)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"002047","name":"ราตรี ขุนแท้","nickname":"ใหญ่,RTK","group":"OPT 1","type":"store","unitCode":"S097","position":"ผู้จัดการสาขา","department":"สาขาศูนย์การค้าแฟชั่นไอส์แลนด์(FSM)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"004950","name":"นิภาพร ม่วงทิม","nickname":"แจ็ค,NPM","group":"PMT","type":"store","unitCode":"S098","position":"ผู้จัดการสาขา","department":"สาขาจรัญสนิทวงศ์(CRW)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"007090","name":"เอณิตา น้ำเพชร","nickname":"โบตั๋น,ATN","group":"OPT 1","type":"store","unitCode":"S099","position":"ผู้จัดการสาขา","department":"สาขามุกดาหาร(MDH)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"020729","name":"นนทยา รัศมีจันทร์","nickname":"กุ้ง,NYR","group":"OPT 1","type":"store","unitCode":"S102","position":"ผู้จัดการสาขา","department":"สาขาสุขสวัสดิ์(SSW)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"082728","name":"กฤติกา พิทักษ์เสถียร","nickname":"ซินเหลียน,KKP","group":"OPT 1","type":"store","unitCode":"S103","position":"ผู้จัดการสาขา","department":"สาขาบางนา กม.1(BNK)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":75.0,"deptGrade":"A"},{"id":"001461","name":"ธรรม์ณภพ เทอดตระกูลรัตน์","nickname":"ตู่,TPT","group":"OPT 1","type":"store","unitCode":"S104","position":"ผู้จัดการสาขา","department":"สาขาฟิวเจอร์พาร์ค รังสิต(RSP)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"001672","name":"กุลนภา สุธากมลรัตน์","nickname":"เพ็ญ,KPS","group":"OPT 1","type":"store","unitCode":"S105","position":"ผู้จัดการสาขา","department":"สาขาลาดกระบัง (LKB)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"010650","name":"รุ่งทิวา แซ่อึ้ง","nickname":"เอ๋,RWS","group":"PMT","type":"store","unitCode":"S106","position":"ผู้จัดการสาขา","department":"สาขาซีคอนบางแค(SCB)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"008317","name":"ยุทธพงษ์ บัวสำอางค์","nickname":"โอ,YPB","group":"OPT 1","type":"store","unitCode":"S107","position":"ผู้จัดการสาขา","department":"สาขาบางบัวทอง(BBT)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"007721","name":"ปัณณิตา สุขสุวรรณ","nickname":"มิ้ม,PTS","group":"OPT 1","type":"store","unitCode":"S108","position":"ผู้จัดการสาขา","department":"สาขาภูเก็ต - เจ้าฟ้า(PKF)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":75.0,"deptGrade":"A"},{"id":"042825","name":"ธัญพร อะตะมะ","nickname":"เจี๊ยบ,TPA","group":"OPT 1","type":"store","unitCode":"S109","position":"ผู้จัดการสาขา","department":"สาขาลำพูน(LPN)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"012809","name":"พรนภา วงษ์เสงี่ยม","nickname":"อ้อย,PPW","group":"OPT 2","type":"store","unitCode":"S110","position":"ผู้จัดการสาขา","department":"สาขาระยอง - ทับมา(RYT)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"064072","name":"พรณชา โพธิ์นิยม","nickname":"เนเน่,PCY","group":"OPT 1","type":"store","unitCode":"S111","position":"ผู้จัดการสาขา","department":"สาขาเชียงใหม่ - รวมโชค(CMR)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"003704","name":"เผด็จ อุไรง้วนตระกูล","nickname":"เก่ง,PDU","group":"OPT 1","type":"store","unitCode":"S112","position":"ผู้จัดการสาขา","department":"สาขาภูเก็ต - เชิงทะเล(PKY)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"},{"id":"060991","name":"พรชัย บุตรโยจันโท","nickname":"ตุ้ม,PCB","group":"OPT 1","type":"store","unitCode":"S113","position":"ผู้จัดการสาขา","department":"สาขาแม่สาย(MSI)","level":"AVP/ADM","indivScore":77.5,"indivGrade":"A","deptScore":75.0,"deptGrade":"A"},{"id":"005213","name":"นรีพร สินทรัพย์เพิ่ม","nickname":"หมู,NSP","group":"OPT 2","type":"store","unitCode":"S116","position":"ผู้จัดการสาขา","department":"สาขาแหลมฉบัง(LCB)","level":"AVP/ADM","indivScore":74.0,"indivGrade":"I","deptScore":69.0,"deptGrade":"I"},{"id":"010395","name":"สุภาวดี อิ๋วสกุล","nickname":"สุ,SDA","group":"OPT 1","type":"store","unitCode":"S117","position":"ผู้จัดการสาขา","department":"สาขาสมุย - เฉวง(SMC)","level":"AVP/ADM","indivScore":82.5,"indivGrade":"G","deptScore":82.5,"deptGrade":"G"}];
+
+        const STORAGE_KEY_DATA = 'talentDashboardData';
+        const STORAGE_KEY_UPDATED_AT = 'talentDashboardUpdatedAt';
+        const EXPECTED_HEADERS = ['Employee ID', 'Employee Name', 'Group', 'HO / Store', 'Dept./Store', 'Position', 'Department', 'Nickname', 'Level', 'Individual Score', 'Individual', 'Dept.Score', 'Dept.'];
+
+        let dashboardData = [];
+        let radarChartInstance = null; // unused now, kept null-safe in case of future re-use
+        let scatterChartInstance = null;
+        let currentView = 'board';
+        let currentFilteredData = [];
+        let currentTableData = [];
+        let tableSort = { key: 'name', direction: 'asc' };
+
+        // ============================================================
+        // UPLOAD / DATA SOURCE
+        // ============================================================
+        function mapExcelRowToRecord(row) {
+            const id = row['Employee ID'];
+            const name = row['Employee Name'];
+            if (!id || !name) return null;
+            const indivRaw = Number(row['Individual Score']);
+            const deptRaw = Number(row['Dept.Score']);
+            const indivScore = Math.round((indivRaw <= 1 ? indivRaw * 100 : indivRaw) * 100) / 100;
+            const deptScore = Math.round((deptRaw <= 1 ? deptRaw * 100 : deptRaw) * 100) / 100;
+            const hoStore = String(row['HO / Store'] || '').trim().toLowerCase();
+            return {
+                id: String(id).trim(),
+                name: String(name).trim(),
+                nickname: row['Nickname'] ? String(row['Nickname']).trim() : '',
+                group: row['Group'] ? String(row['Group']).trim() : '',
+                type: hoStore === 'ho' ? 'hq' : 'store',
+                unitCode: row['Dept./Store'] ? String(row['Dept./Store']).trim() : '',
+                position: row['Position'] ? String(row['Position']).trim() : '',
+                department: row['Department'] ? String(row['Department']).trim() : '',
+                level: row['Level'] ? String(row['Level']).trim() : '',
+                indivScore, deptScore,
+                indivGrade: row['Individual'] ? String(row['Individual']).trim() : gradeFromScore(indivScore, INDIV_THRESHOLDS),
+                deptGrade: row['Dept.'] ? String(row['Dept.']).trim() : gradeFromScore(deptScore, DEPT_THRESHOLDS),
+            };
+        }
+
+        function showUploadStatus(message, type) {
+            const bar = document.getElementById('upload-status-bar');
+            bar.textContent = message;
+            bar.className = `px-6 py-1.5 text-xs font-semibold border-t ${type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`;
+            bar.classList.remove('hidden');
+            clearTimeout(showUploadStatus._t);
+            showUploadStatus._t = setTimeout(() => bar.classList.add('hidden'), 7000);
+        }
+
+        function updateDataSourceNote(count, date, isSample) {
+            const el = document.getElementById('data-source-note');
+            if (isSample) {
+                el.innerText = `ข้อมูลตัวอย่าง (Performance Matrix) • ${count} รายการ`;
+            } else {
+                const stamp = date ? date.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+                el.innerText = `อัปโหลดล่าสุด: ${stamp} • ${count} รายการ`;
+            }
+        }
+
+        function handleUploadFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const sheet = workbook.Sheets[sheetName];
+                    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+                    if (!rows.length) throw new Error('ไม่พบข้อมูลในไฟล์ที่อัปโหลด');
+                    const headers = Object.keys(rows[0]);
+                    const missing = EXPECTED_HEADERS.filter(h => !headers.includes(h));
+                    if (missing.length) throw new Error(`หัวคอลัมน์ไม่ครบ ขาด: ${missing.join(', ')}`);
+                    const mapped = rows.map(mapExcelRowToRecord).filter(Boolean);
+                    if (!mapped.length) throw new Error('แปลงข้อมูลไม่สำเร็จ ไม่มีแถวที่ใช้งานได้');
+
+                    dashboardData = mapped;
+                    localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(mapped));
+                    const now = new Date();
+                    localStorage.setItem(STORAGE_KEY_UPDATED_AT, now.toISOString());
+                    updateDataSourceNote(mapped.length, now, false);
+                    populateGroupFilter();
+                    populateLevelFilter();
+                    applyFilters();
+                    showUploadStatus(`อัปโหลดสำเร็จ: โหลดข้อมูล ${mapped.length} รายการ`, 'success');
+                } catch (err) {
+                    console.error(err);
+                    const isEncrypted = /password|encrypt/i.test(err.message || '') || /password|encrypt/i.test(err.name || '');
+                    const msg = isEncrypted
+                        ? 'ไฟล์นี้มีการเข้ารหัสด้วยรหัสผ่าน กรุณาปลดรหัสผ่านออกก่อนอัปโหลด (File > Info > Protect Workbook > ลบรหัสผ่าน)'
+                        : (err.message || 'ไม่สามารถอ่านไฟล์นี้ได้ กรุณาตรวจสอบว่าเป็นไฟล์ .xlsx ที่ export จาก Performance Matrix');
+                    showUploadStatus(msg, 'error');
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            reader.onerror = function () { showUploadStatus('อ่านไฟล์ไม่สำเร็จ', 'error'); };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function resetToSampleData() {
+            localStorage.removeItem(STORAGE_KEY_DATA);
+            localStorage.removeItem(STORAGE_KEY_UPDATED_AT);
+            dashboardData = REAL_DATA.map(r => ({ ...r }));
+            updateDataSourceNote(dashboardData.length, null, true);
+            populateGroupFilter();
+            populateLevelFilter();
+            applyFilters();
+            showUploadStatus('รีเซ็ตกลับไปใช้ข้อมูลตัวอย่างเริ่มต้นแล้ว', 'success');
+        }
+
+        // ============================================================
+        // VIEWS CONTROLLER
+        // ============================================================
+        function switchView(viewName) {
+            currentView = viewName;
+            const btnBoard = document.getElementById('btn-view-board');
+            const btnTable = document.getElementById('btn-view-table');
+            const viewBoard = document.getElementById('view-board');
+            const viewTable = document.getElementById('view-table');
+            const viewHQTalent = document.getElementById('view-hq-talent');
+            const kpiBar = document.getElementById('kpi-bar');
+
+            btnBoard.className = "flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold rounded-md text-slate-500 hover:text-slate-700 transition-all";
+            btnTable.className = "flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold rounded-md text-slate-500 hover:text-slate-700 transition-all";
+
+            viewBoard.classList.add('hidden');
+            viewTable.classList.add('hidden');
+            viewHQTalent.classList.add('hidden');
+            kpiBar.classList.remove('hidden');
+
+            if (viewName === 'table') {
+                btnTable.className = "flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold rounded-md bg-white text-blue-700 shadow-sm transition-all";
+                viewTable.classList.remove('hidden');
+            } else {
+                btnBoard.className = "flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold rounded-md bg-white text-blue-700 shadow-sm transition-all";
+                viewBoard.classList.remove('hidden');
+                if (scatterChartInstance) scatterChartInstance.resize();
+            }
+        }
+
+        // CSS-only "pseudo fullscreen" overlay instead of the native Fullscreen API:
+        // the panel sits inside several nested flex/overflow-hidden ancestors, and the
+        // native API's top-layer enter/exit transition left this layout unsettled when
+        // collapsing back down. A fixed-position overlay toggle avoids that entirely.
+        function setMatrixFullscreen(isFull) {
+            const panel = document.getElementById('matrix-panel');
+            panel.classList.toggle('is-fullscreen', isFull);
+            const icon = document.querySelector('#btn-matrix-fullscreen i');
+            if (icon) icon.className = isFull ? 'ph-fill ph-arrows-in text-lg' : 'ph-fill ph-arrows-out text-lg';
+            document.getElementById('btn-matrix-fullscreen').title = isFull ? 'ออกจากเต็มจอ' : 'ขยายเต็มจอ';
+            // No manual resize() call here: the ResizeObserver set up in
+            // observeMatrixContainer() below fires exactly when the browser has
+            // actually committed the new box size, whether that takes 1 frame or 3.
+        }
+        function toggleMatrixFullscreen() {
+            const panel = document.getElementById('matrix-panel');
+            setMatrixFullscreen(!panel.classList.contains('is-fullscreen'));
+        }
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.getElementById('matrix-panel').classList.contains('is-fullscreen')) {
+                setMatrixFullscreen(false);
+            }
+        });
+
+        function applyFilters() {
+            const filterValue = document.getElementById('global-filter').value;
+            let filteredData = dashboardData;
+            if (filterValue !== 'all') {
+                filteredData = dashboardData.filter(e => e.type === filterValue);
+            }
+
+            currentFilteredData = filteredData;
+            document.getElementById('stat-total').innerText = filteredData.length;
+            updateKpiBar(filteredData, filterValue);
+
+            renderScatterChart(filteredData);
+            renderPool(filteredData);
+            renderTable();
+        }
+
+        function updateKpiBar(data, filterValue) {
+            const total = data.length;
+            const grouped = data.map(emp => ({ ...emp, derivedGroup: deriveGroup(emp) }));
+            const abnormal = grouped.filter(e => e.derivedGroup === 'abnormal').length;
+            const high = grouped.filter(e => e.derivedGroup === 'high').length;
+            const dev = grouped.filter(e => e.derivedGroup === 'develop').length;
+            const viewLabels = { all: 'All Organization', hq: 'Talent HQ', store: 'Talent Store' };
+
+            document.getElementById('kpi-total').innerText = total;
+            document.getElementById('kpi-view-label').innerText = viewLabels[filterValue] || 'Selected View';
+            document.getElementById('kpi-abnormal').innerText = abnormal;
+            document.getElementById('kpi-abnormal-pct').innerText = pct(abnormal, total);
+            document.getElementById('kpi-high').innerText = high;
+            document.getElementById('kpi-high-pct').innerText = pct(high, total);
+            document.getElementById('kpi-dev').innerText = dev;
+            document.getElementById('kpi-dev-pct').innerText = pct(dev, total);
+        }
+
+        function populateGroupFilter() {
+            const select = document.getElementById('table-group-filter');
+            const current = select.value;
+            const groups = [...new Set(currentFilteredData.map(e => e.group))].filter(Boolean).sort((a, b) => a.localeCompare(b));
+            select.innerHTML = '<option value="all">All Groups</option>' + groups.map(g => `<option value="${g}">${g}</option>`).join('');
+            select.value = groups.includes(current) ? current : 'all';
+        }
+        function populateLevelFilter() {
+            const select = document.getElementById('table-level-filter');
+            const current = select.value;
+            const levels = [...new Set(currentFilteredData.map(e => e.level))].filter(Boolean).sort((a, b) => a.localeCompare(b));
+            select.innerHTML = '<option value="all">All Levels</option>' + levels.map(l => `<option value="${l}">${l}</option>`).join('');
+            select.value = levels.includes(current) ? current : 'all';
+        }
+
+        // ============================================================
+        // BOARD VIEW — Store GM-DM Level quadrant grid.
+        // X = Individual grade, Y = Dept./Store grade (matches the reference grid).
+        // Every grade band is drawn at EQUAL width/height regardless of its real
+        // percentage span (a score is placed at its fractional position inside its
+        // own band) so a wide band like T (50-65%, rarely populated) doesn't dominate
+        // the layout the way it would on a true linear-percent axis.
+        // ============================================================
+        const GRADE_AXIS_COLOR = { 'T': '#dc2626', 'I': '#f97316', 'A': '#eab308', 'G': '#84cc16', 'G+': '#22c55e', 'E': '#10b981', 'E+': '#15803d' };
+        const INDIV_AXIS_BOUNDS = [50, 65, 75, 80, 85, 90, 95, 100]; // x-axis (Individual %) real thresholds
+        const DEPT_AXIS_BOUNDS = [50, 65, 70, 80, 85, 90, 95, 100];  // y-axis (Dept./Store %) real thresholds
+
+        const ZONE_FILL = {
+            develop: 'rgba(248, 113, 113, 0.28)',
+            abnormal: 'rgba(251, 146, 60, 0.28)',
+            normal: 'rgba(250, 204, 21, 0.28)',
+            high: 'rgba(74, 222, 128, 0.28)'
+        };
+        const GROUP_LABEL = { develop: 'Development', abnormal: 'Abnormal', normal: 'Normal', high: 'High Performance' };
+        const GROUP_POINT_COLOR = { develop: '#ef4444', abnormal: '#fb923c', normal: '#eab308', high: '#22c55e' };
+
+        // Maps a real score into "band index + fraction" so every grade gets equal screen space.
+        function scoreToVirtualPos(score, bounds) {
+            for (let i = 0; i < bounds.length - 1; i++) {
+                if (score < bounds[i + 1] || i === bounds.length - 2) {
+                    const frac = (score - bounds[i]) / (bounds[i + 1] - bounds[i]);
+                    return i + Math.max(0, Math.min(1, frac));
+                }
+            }
+            return 0;
+        }
+
+        function axisTickOptions(bounds) {
+            return {
+                autoSkip: false,
+                color: (ctx) => GRADE_AXIS_COLOR[gradeLabels[Math.floor(ctx.tick.value)]] || '#94a3b8',
+                font: { family: 'Inter', size: 11, weight: 'bold' },
+                callback: (value) => {
+                    const i = Math.floor(value);
+                    if (!gradeLabels[i]) return '';
+                    const pctLabel = i === 0 ? `<${bounds[1]}%` : `≥${bounds[i]}%`;
+                    return [gradeLabels[i], pctLabel];
+                }
+            };
+        }
+
+        const zoneBackgroundPlugin = {
+            id: 'zoneBackgroundPlugin',
+            beforeDraw: (chart) => {
+                const { ctx } = chart;
+                const xAxis = chart.scales.x;
+                const yAxis = chart.scales.y;
+                ctx.save();
+                for (let xi = 0; xi < gradeLabels.length; xi++) {
+                    const indivGrade = gradeLabels[xi];
+                    const x0 = xAxis.getPixelForValue(xi);
+                    const x1 = xAxis.getPixelForValue(xi + 1);
+                    for (let yi = 0; yi < gradeLabels.length; yi++) {
+                        const deptGrade = gradeLabels[yi];
+                        const y0 = yAxis.getPixelForValue(yi);
+                        const y1 = yAxis.getPixelForValue(yi + 1);
+                        ctx.fillStyle = ZONE_FILL[deriveGroupFromGrades(indivGrade, deptGrade)];
+                        ctx.fillRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+                    }
+                }
+                // Crisp band-boundary dividers (drawn at exact zone edges, not at tick/label positions)
+                ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+                ctx.lineWidth = 1;
+                for (let i = 1; i < gradeLabels.length; i++) {
+                    const xp = xAxis.getPixelForValue(i);
+                    ctx.beginPath(); ctx.moveTo(xp, yAxis.top); ctx.lineTo(xp, yAxis.bottom); ctx.stroke();
+                    const yp = yAxis.getPixelForValue(i);
+                    ctx.beginPath(); ctx.moveTo(xAxis.left, yp); ctx.lineTo(xAxis.right, yp); ctx.stroke();
+                }
+                ctx.restore();
+            }
+        };
+
+        // Watches the chart's actual container box (not the window, not a fixed
+        // number of animation frames) and calls resize() the moment the browser has
+        // genuinely committed a new size for it — the only reliable way to catch a
+        // Chart.js canvas up after CSS-driven layout changes (fullscreen toggle,
+        // sidebar collapse, view switch, first paint, etc.).
+        let matrixResizeObserver = null;
+        function observeMatrixContainer() {
+            if (matrixResizeObserver) return;
+            const container = document.getElementById('scatterChart').parentElement;
+            matrixResizeObserver = new ResizeObserver(() => {
+                if (scatterChartInstance) scatterChartInstance.resize();
+            });
+            matrixResizeObserver.observe(container);
+        }
+
+        function renderScatterChart(data) {
+            const ctx = document.getElementById('scatterChart').getContext('2d');
+            if (scatterChartInstance) scatterChartInstance.destroy();
+
+            const groups = {
+                develop: { label: GROUP_LABEL.develop, color: GROUP_POINT_COLOR.develop, data: [] },
+                abnormal: { label: GROUP_LABEL.abnormal, color: GROUP_POINT_COLOR.abnormal, data: [] },
+                normal: { label: GROUP_LABEL.normal, color: GROUP_POINT_COLOR.normal, data: [] },
+                high: { label: GROUP_LABEL.high, color: GROUP_POINT_COLOR.high, data: [] }
+            };
+
+            data.forEach(emp => {
+                const derivedGroup = deriveGroup(emp);
+                const jitterX = deterministicJitter(emp.id, 'x') * 0.12; // small, band-relative jitter
+                const jitterY = deterministicJitter(emp.id, 'y') * 0.12;
+                groups[derivedGroup].data.push({
+                    x: scoreToVirtualPos(emp.indivScore, INDIV_AXIS_BOUNDS) + jitterX,
+                    y: scoreToVirtualPos(emp.deptScore, DEPT_AXIS_BOUNDS) + jitterY,
+                    empData: { ...emp, derivedGroup }
+                });
+            });
+
+            const datasets = Object.values(groups).map(g => ({
+                label: g.label,
+                data: g.data,
+                backgroundColor: g.color,
+                borderColor: '#ffffff',
+                borderWidth: 1.5,
+                pointRadius: 6,
+                pointHoverRadius: 9,
+                pointHoverBorderWidth: 2
+            }));
+
+            scatterChartInstance = new Chart(ctx, {
+                type: 'scatter',
+                data: { datasets },
+                plugins: [zoneBackgroundPlugin],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 20, right: 20, bottom: 10, left: 10 } },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Individual Grade (รายบุคคล)', font: { family: 'Inter', size: 13, weight: '700' }, color: '#475569' },
+                            min: 0, max: gradeLabels.length,
+                            afterBuildTicks: (axis) => { axis.ticks = gradeLabels.map((_, i) => ({ value: i + 0.5 })); },
+                            ticks: axisTickOptions(INDIV_AXIS_BOUNDS),
+                            grid: { display: false },
+                            border: { display: true, color: '#cbd5e1' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Dept. / Store Grade (สายงาน/หน่วยงาน)', font: { family: 'Inter', size: 13, weight: '700' }, color: '#475569' },
+                            min: 0, max: gradeLabels.length,
+                            afterBuildTicks: (axis) => { axis.ticks = gradeLabels.map((_, i) => ({ value: i + 0.5 })); },
+                            ticks: axisTickOptions(DEPT_AXIS_BOUNDS),
+                            grid: { display: false },
+                            border: { display: true, color: '#cbd5e1' }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true, boxWidth: 8, font: { family: 'Inter', size: 12, weight: '600' } }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            titleFont: { family: 'Inter', size: 14 },
+                            bodyFont: { family: 'Inter', size: 13 },
+                            padding: 12,
+                            callbacks: {
+                                label: function (context) {
+                                    const emp = context.raw.empData;
+                                    return [
+                                        `${emp.name} (${emp.position})`,
+                                        `Individual: ${emp.indivScore.toFixed(1)}% [${emp.indivGrade}]`,
+                                        `Dept.: ${emp.deptScore.toFixed(1)}% [${emp.deptGrade}]`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const datasetIndex = elements[0].datasetIndex;
+                            const index = elements[0].index;
+                            const emp = scatterChartInstance.data.datasets[datasetIndex].data[index].empData;
+                            openProfileModal(emp.id);
+                        }
+                    },
+                    onHover: (event, elements) => {
+                        event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+                    }
+                }
+            });
+
+            observeMatrixContainer();
+        }
+
+        function getCardHTML(emp) {
+            let colorTheme = 'text-slate-800';
+            const derivedGroup = deriveGroup(emp);
+            const displayTag = getDisplayTag({ ...emp, derivedGroup });
+            const displayTagColor = getDisplayTagColor({ ...emp, derivedGroup });
+            if (derivedGroup === 'develop') colorTheme = 'text-red-600';
+            else if (derivedGroup === 'abnormal') colorTheme = 'text-orange-600';
+            else if (derivedGroup === 'normal') colorTheme = 'text-amber-600';
+            else if (derivedGroup === 'high') colorTheme = 'text-emerald-600';
+
+            return `
+                <div class="bg-white rounded-xl border border-slate-200 p-3 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group relative" onclick="openProfileModal('${emp.id}')">
+                    <div class="absolute right-3 top-3 ${displayTagColor} text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">${displayTag}</div>
+                    <div class="flex items-start gap-3">
+                        ${avatarHTML(emp.name, 'w-12 h-12 text-sm')}
+                        <div class="flex-1 min-w-0 pr-16">
+                            <h3 class="font-bold text-sm text-slate-800 truncate group-hover:text-blue-600 transition-colors">${emp.name}</h3>
+                            <p class="text-xs text-slate-500 truncate">${emp.position}</p>
+                            <div class="flex items-center gap-2 mt-1">
+                                <p class="text-[9px] text-slate-400 flex items-center gap-0.5"><i class="ph ph-briefcase"></i> ${emp.group}</p>
+                                <p class="text-[9px] text-slate-400 flex items-center gap-0.5"><i class="ph ph-buildings"></i> ${emp.type === 'hq' ? 'HQ' : 'Store'}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2">
+                        <div class="flex flex-col">
+                            <span class="text-[9px] text-slate-400 uppercase tracking-wide">Individual</span>
+                            <span class="font-bold text-sm ${colorTheme} tabular-nums">${emp.indivScore.toFixed(1)}% <span class="text-[10px] opacity-70">(${emp.indivGrade})</span></span>
+                        </div>
+                        <div class="flex flex-col border-l border-slate-100 pl-2">
+                            <span class="text-[9px] text-slate-400 uppercase tracking-wide">Dept.</span>
+                            <span class="font-bold text-sm ${colorTheme} tabular-nums">${emp.deptScore.toFixed(1)}% <span class="text-[10px] opacity-70">(${emp.deptGrade})</span></span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderPool(data) {
+            const grouped = data.map(emp => ({ ...emp, derivedGroup: deriveGroup(emp) }));
+            const grpDev = grouped.filter(e => e.derivedGroup === 'develop');
+            const grpAbnormal = grouped.filter(e => e.derivedGroup === 'abnormal');
+            const grpHigh = grouped.filter(e => e.derivedGroup === 'high');
+
+            document.getElementById('count-dev').innerText = grpDev.length;
+            document.getElementById('count-abnormal').innerText = grpAbnormal.length;
+            document.getElementById('count-high').innerText = grpHigh.length;
+
+            document.getElementById('pool-dev').innerHTML = grpDev.map(getCardHTML).join('');
+            document.getElementById('pool-abnormal').innerHTML = grpAbnormal.map(getCardHTML).join('');
+            document.getElementById('pool-high').innerHTML = grpHigh.map(getCardHTML).join('');
+
+            // No Abnormal people right now? Collapse the column so High Perf./Development get the room.
+            document.getElementById('col-abnormal').classList.toggle('hidden', grpAbnormal.length === 0);
+        }
+
+        // ============================================================
+        // TABLE VIEW
+        // ============================================================
+        function getTableFilteredData() {
+            const search = (document.getElementById('table-search')?.value || '').trim().toLowerCase();
+            const talent = document.getElementById('table-talent-filter')?.value || 'all';
+            const level = document.getElementById('table-level-filter')?.value || 'all';
+            const group = document.getElementById('table-group-filter')?.value || 'all';
+
+            let data = currentFilteredData.filter(emp => {
+                const derivedGroup = deriveGroup(emp);
+                const searchText = `${emp.name} ${emp.nickname} ${emp.position} ${emp.department} ${emp.group} ${emp.id}`.toLowerCase();
+                const matchesSearch = !search || searchText.includes(search);
+                const matchesTalent = talent === 'all' || derivedGroup === talent;
+                const matchesLevel = level === 'all' || emp.level === level;
+                const matchesGroup = group === 'all' || emp.group === group;
+                return matchesSearch && matchesTalent && matchesLevel && matchesGroup;
+            });
+
+            const talentRank = { high: 4, normal: 3, abnormal: 2, develop: 1 };
+            const getSortValue = (emp) => {
+                if (tableSort.key === 'talentGroup') return talentRank[deriveGroup(emp)] || 0;
+                if (tableSort.key === 'indivScore') return emp.indivScore;
+                if (tableSort.key === 'deptScore') return emp.deptScore;
+                return String(emp[tableSort.key] || '').toLowerCase();
+            };
+
+            data = [...data].sort((a, b) => {
+                const av = getSortValue(a);
+                const bv = getSortValue(b);
+                const comparison = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+                return tableSort.direction === 'asc' ? comparison : -comparison;
+            });
+
+            return data;
+        }
+
+        function sortTable(key) {
+            if (tableSort.key === key) {
+                tableSort.direction = tableSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                tableSort = { key, direction: (key === 'indivScore' || key === 'deptScore' || key === 'talentGroup') ? 'desc' : 'asc' };
+            }
+            renderTable();
+        }
+
+        function updateSortIndicators() {
+            document.querySelectorAll('[data-sort-key]').forEach(el => {
+                el.innerText = el.dataset.sortKey === tableSort.key ? (tableSort.direction === 'asc' ? '^' : 'v') : '';
+            });
+        }
+
+        function renderTable(data = getTableFilteredData()) {
+            const tbody = document.getElementById('table-body');
+            currentTableData = data;
+            document.getElementById('table-count').innerText = data.length;
+            updateSortIndicators();
+
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="py-10 text-center text-slate-400 font-medium">No records found.</td></tr>`;
+                return;
+            }
+
+            const html = data.map(emp => {
+                const derivedGroup = deriveGroup(emp);
+                const displayTag = getDisplayTag({ ...emp, derivedGroup });
+                const displayTagColor = getDisplayTagColor({ ...emp, derivedGroup });
+
+                return `
+                    <tr class="table-row-hover border-b border-slate-100" onclick="openProfileModal('${emp.id}')">
+                        <td class="py-3 px-4">
+                            <div class="flex items-center gap-3">
+                                ${avatarHTML(emp.name, 'w-9 h-9 text-xs')}
+                                <div class="min-w-0">
+                                    <div class="text-sm font-bold text-slate-800 truncate">${emp.name}</div>
+                                    <div class="text-xs text-slate-500 truncate">${emp.nickname ? emp.nickname + ' · ' : ''}${emp.id}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3 px-4 max-w-[320px]">
+                            <div class="text-sm font-semibold text-slate-700 truncate">${emp.position}</div>
+                            <div class="text-xs text-slate-400 truncate">${emp.department} · <span class="font-semibold">${emp.group}</span> · ${emp.type === 'hq' ? 'HQ' : 'Store'}</div>
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <span class="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md whitespace-nowrap">${emp.level}</span>
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <span class="${displayTagColor} text-[10px] font-bold px-2 py-1 rounded-md uppercase whitespace-nowrap">${displayTag}</span>
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <div class="font-bold text-sm text-slate-800 tabular-nums">${emp.indivScore.toFixed(1)}%</div>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${getGradeColor(emp.indivGrade)}">${emp.indivGrade}</span>
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <div class="font-bold text-sm text-slate-800 tabular-nums">${emp.deptScore.toFixed(1)}%</div>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${getGradeColor(emp.deptGrade)}">${emp.deptGrade}</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            tbody.innerHTML = html;
+        }
+
+        function exportTableCsv() {
+            const rows = currentTableData.length ? currentTableData : getTableFilteredData();
+            const headers = ['Employee ID', 'Name', 'Nickname', 'Group', 'HO/Store', 'Unit Code', 'Position', 'Department', 'Level', 'Individual Score (%)', 'Individual Grade', 'Dept Score (%)', 'Dept Grade', 'Talent Group'];
+            const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+            const csv = [
+                headers.map(escapeCsv).join(','),
+                ...rows.map(emp => [
+                    emp.id, emp.name, emp.nickname, emp.group, emp.type === 'hq' ? 'HO' : 'Store',
+                    emp.unitCode, emp.position, emp.department, emp.level,
+                    emp.indivScore.toFixed(2), emp.indivGrade, emp.deptScore.toFixed(2), emp.deptGrade,
+                    getDisplayTag({ ...emp, derivedGroup: deriveGroup(emp) })
+                ].map(escapeCsv).join(','))
+            ].join('\n');
+
+            const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const view = document.getElementById('global-filter').value;
+            const stamp = new Date().toISOString().slice(0, 10);
+            link.href = url;
+            link.download = `homepro_talent_pool_${view}_${stamp}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        // ============================================================
+        // PROFILE MODAL — real fields only (no photo / tenure / risk / history / IDP / radar)
+        // ============================================================
+        function buildScoreRuler(scorePct, grade, axis) {
+            const thresholds = axis === 'indiv' ? INDIV_THRESHOLDS : DEPT_THRESHOLDS;
+            const RULER_MIN = 50, RULER_MAX = 100;
+            const pos = v => Math.min(100, Math.max(0, ((v - RULER_MIN) / (RULER_MAX - RULER_MIN)) * 100));
+            const marks = thresholds.filter(([, m]) => m > 0).slice().reverse(); // ascending, excluding T(0)
+            const color = gradeSolidColor(grade);
+
+            const ticks = marks.map(([g, m]) => `<div class="absolute top-0 bottom-0 w-px bg-white/80" style="left:${pos(m)}%"></div>`).join('');
+            const labels = marks.map(([g, m]) => `<span class="absolute text-[9px] font-bold text-slate-400 -translate-x-1/2" style="left:${pos(m)}%">${g}</span>`).join('');
+
+            return `
+                <div class="relative">
+                    <div class="h-2.5 bg-slate-100 rounded-full relative overflow-visible">
+                        <div class="h-full rounded-full" style="width:${pos(scorePct)}%; background:${color}"></div>
+                        ${ticks}
+                        <div class="absolute -top-1 w-4 h-4 rounded-full bg-white shadow" style="left:calc(${pos(scorePct)}% - 8px); border:2px solid ${color}"></div>
+                    </div>
+                    <div class="relative mt-1.5 h-4">${labels}</div>
+                </div>
+            `;
+        }
+
+        function openProfileModal(id) {
+            const emp = dashboardData.find(e => e.id === id);
+            if (!emp) return;
+            const derivedGroup = deriveGroup(emp);
+            const displayTag = getDisplayTag({ ...emp, derivedGroup });
+            const displayTagColor = getDisplayTagColor({ ...emp, derivedGroup });
+
+            document.getElementById('modal-avatar').innerHTML = avatarHTML(emp.name, 'w-16 h-16 text-lg border-2 border-white/40');
+            document.getElementById('modal-tag').innerHTML = `<span class="${displayTagColor} text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider shadow-sm border border-black/5 bg-white/90">${displayTag}</span>`;
+            document.getElementById('modal-name').innerText = emp.name;
+            document.getElementById('modal-nickname').innerText = emp.nickname ? `${emp.nickname} · ${emp.id}` : emp.id;
+            document.getElementById('modal-role').innerText = emp.position;
+
+            document.getElementById('modal-identity').innerHTML = `
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 col-span-2 md:col-span-2">
+                    <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Department</div>
+                    <div class="text-sm font-semibold text-slate-700 truncate" title="${emp.department}">${emp.department}</div>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Group</div>
+                    <div class="text-sm font-semibold text-slate-700">${emp.group}</div>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Level</div>
+                    <div class="text-sm font-semibold text-slate-700">${emp.level}</div>
+                </div>
+            `;
+
+            document.getElementById('modal-indiv-score').innerText = `${emp.indivScore.toFixed(1)}%`;
+            document.getElementById('modal-indiv-grade-badge').innerHTML = `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${getGradeColor(emp.indivGrade)}">${emp.indivGrade}</span>`;
+            document.getElementById('modal-indiv-ruler').innerHTML = buildScoreRuler(emp.indivScore, emp.indivGrade, 'indiv');
+
+            document.getElementById('modal-dept-score').innerText = `${emp.deptScore.toFixed(1)}%`;
+            document.getElementById('modal-dept-grade-badge').innerHTML = `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${getGradeColor(emp.deptGrade)}">${emp.deptGrade}</span>`;
+            document.getElementById('modal-dept-ruler').innerHTML = buildScoreRuler(emp.deptScore, emp.deptGrade, 'dept');
+
+            document.getElementById('modal-group-desc').innerText = getGroupDescription(derivedGroup, emp);
+
+            const headerBg = document.getElementById('modal-header-bg');
+            headerBg.className = 'p-6 relative shrink-0 flex items-center gap-4 ';
+            if (derivedGroup === 'develop') headerBg.className += 'bg-gradient-to-r from-red-800 to-red-600';
+            else if (derivedGroup === 'abnormal') headerBg.className += 'bg-gradient-to-r from-orange-700 to-orange-500';
+            else if (derivedGroup === 'high') headerBg.className += 'bg-gradient-to-r from-emerald-800 to-emerald-600';
+            else headerBg.className += 'bg-gradient-to-r from-amber-600 to-amber-400';
+
+            document.getElementById('profile-modal').classList.remove('hidden');
+        }
+        function closeProfileModal() { document.getElementById('profile-modal').classList.add('hidden'); }
+
+        // ============================================================
+        // GRADE LEGEND MODAL
+        // ============================================================
+        function populateGradeLegend() {
+            document.getElementById('grade-legend-body').innerHTML = GRADE_DEFINITIONS.map(g => `
+                <tr class="border-b border-slate-100">
+                    <td class="p-2.5"><span class="px-2 py-0.5 rounded text-xs font-bold ${getGradeColor(g.grade)}">${g.grade}</span></td>
+                    <td class="p-2.5 text-slate-700">${g.def}</td>
+                    <td class="p-2.5 text-center font-bold text-emerald-600 tabular-nums">${g.dept > 0 ? '≥ ' + g.dept + '%' : '< 65%'}</td>
+                    <td class="p-2.5 text-center font-bold text-blue-600 tabular-nums">${g.indiv > 0 ? '≥ ' + g.indiv + '%' : '< 65%'}</td>
+                </tr>
+            `).join('');
+        }
+        function openGradeLegend() { document.getElementById('grade-legend-modal').classList.remove('hidden'); }
+        function closeGradeLegend() { document.getElementById('grade-legend-modal').classList.add('hidden'); }
+
+        // ============================================================
+        // TALENT POOL HQ (kept as-is, unreachable from nav until re-enabled — no matching assessment data source yet)
+        // ============================================================
+        const hqTalentProfiles = [
+            {
+                id: 'hqt-001', name: 'Supichan Pancharean', department: 'Marketing', role: 'Senior Brand Specialist',
+                img: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=160&h=160&fit=crop',
+                indivGrade: 'E+', deptGrade: 'E', chance: 92.97, level: 'Potential Talent',
+                strengths: [
+                    { name: 'High Esteem', score: 94, desc: 'Self-worth and confidence under complex business context.' },
+                    { name: 'Strong Facilitation', score: 88, desc: 'Creates alignment across teams and turns discussion into action.' },
+                    { name: 'Thrive', score: 86, desc: 'Learns fast and keeps momentum in ambiguous situations.' }
+                ],
+                traits: { 'Self-worth': 94, Cognitive: 82, Influential: 88 },
+                careers: [{ name: 'Marketing', pct: 60 }, { name: 'Merchandise', pct: 40 }]
+            },
+            {
+                id: 'hqt-002', name: 'Krit Vattanakul', department: 'Merchandising', role: 'Category Manager',
+                img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=160&h=160&fit=crop',
+                indivGrade: 'E', deptGrade: 'G+', chance: 89.4, level: 'Ready Now',
+                strengths: [
+                    { name: 'Commercial Judgement', score: 91, desc: 'Balances margin, assortment, and supplier negotiation well.' },
+                    { name: 'Fast Learning', score: 86, desc: 'Quickly translates customer signals into category action.' },
+                    { name: 'Driving', score: 84, desc: 'Pushes execution discipline across buying and store coordination.' }
+                ],
+                traits: { 'Commercial': 91, Cognitive: 86, Influential: 80 },
+                careers: [{ name: 'Merchandise', pct: 55 }, { name: 'Operations', pct: 25 }, { name: 'Marketing', pct: 20 }]
+            },
+            {
+                id: 'hqt-003', name: 'Narin Chaisri', department: 'Operations', role: 'Store Operations Lead',
+                img: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=160&h=160&fit=crop',
+                indivGrade: 'G+', deptGrade: 'E', chance: 86.8, level: 'Potential Talent',
+                strengths: [
+                    { name: 'Strong Facilitation', score: 90, desc: 'Builds store adoption through clear routines and coaching.' },
+                    { name: 'Driving', score: 87, desc: 'Keeps field execution on track during peak workload.' },
+                    { name: 'Influential', score: 82, desc: 'Uses practical evidence to influence stakeholders.' }
+                ],
+                traits: { 'Execution': 90, Cognitive: 78, Influential: 82 },
+                careers: [{ name: 'Operations', pct: 65 }, { name: 'HRBP', pct: 20 }, { name: 'Training', pct: 15 }]
+            },
+            {
+                id: 'hqt-004', name: 'Pimchanok S.', department: 'Digital Commerce', role: 'Product Owner',
+                img: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=160&h=160&fit=crop',
+                indivGrade: 'E', deptGrade: 'E+', chance: 94.2, level: 'Ready Now',
+                strengths: [
+                    { name: 'Cognitive Agility', score: 93, desc: 'Connects data, customer journeys, and business priorities.' },
+                    { name: 'Thrive', score: 90, desc: 'Experiments with discipline and scales what works.' },
+                    { name: 'Fast Learning', score: 89, desc: 'Absorbs new digital tools and translates them for teams.' }
+                ],
+                traits: { 'Self-worth': 86, Cognitive: 93, Influential: 84 },
+                careers: [{ name: 'Digital Commerce', pct: 70 }, { name: 'Marketing', pct: 20 }, { name: 'Merchandise', pct: 10 }]
+            },
+            {
+                id: 'hqt-005', name: 'Anucha Rattanapol', department: 'Supply Chain', role: 'Planning Supervisor',
+                img: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=160&h=160&fit=crop',
+                indivGrade: 'G+', deptGrade: 'E', chance: 78.6, level: 'Emerging Talent',
+                strengths: [
+                    { name: 'Analytical Thinking', score: 86, desc: 'Finds root causes in inventory and replenishment patterns.' },
+                    { name: 'Driving', score: 81, desc: 'Follows through with measurable improvement actions.' },
+                    { name: 'Collaboration', score: 78, desc: 'Coordinates smoothly with stores and merchandising teams.' }
+                ],
+                traits: { 'Execution': 81, Cognitive: 86, Influential: 74 },
+                careers: [{ name: 'Supply Chain', pct: 60 }, { name: 'Operations', pct: 25 }, { name: 'Merchandise', pct: 15 }]
+            },
+            {
+                id: 'hqt-006', name: 'Waranya P.', department: 'Human Resources', role: 'HRBP Specialist',
+                img: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=160&h=160&fit=crop',
+                indivGrade: 'E', deptGrade: 'G+', chance: 84.9, level: 'Potential Talent',
+                strengths: [
+                    { name: 'High Esteem', score: 88, desc: 'Shows resilience and composed judgement in sensitive people topics.' },
+                    { name: 'Influential', score: 86, desc: 'Guides leaders with clarity and practical options.' },
+                    { name: 'Strong Facilitation', score: 83, desc: 'Runs talent conversations that end with clear ownership.' }
+                ],
+                traits: { 'Self-worth': 88, Cognitive: 80, Influential: 86 },
+                careers: [{ name: 'HRBP', pct: 60 }, { name: 'Training', pct: 25 }, { name: 'Operations', pct: 15 }]
+            }
+        ];
+
+        function populateHQTalentFilters() {
+            const deptSelect = document.getElementById('hq-talent-dept-filter');
+            const careerSelect = document.getElementById('hq-talent-career-filter');
+            const currentDept = deptSelect.value;
+            const currentCareer = careerSelect.value;
+            const departments = [...new Set(hqTalentProfiles.map(t => t.department))].sort((a, b) => a.localeCompare(b));
+            const careers = [...new Set(hqTalentProfiles.flatMap(t => t.careers.map(c => c.name)))].sort((a, b) => a.localeCompare(b));
+
+            deptSelect.innerHTML = '<option value="all">All Departments</option>' + departments.map(dept => `<option value="${dept}">${dept}</option>`).join('');
+            careerSelect.innerHTML = '<option value="all">All Career Tracks</option>' + careers.map(career => `<option value="${career}">${career}</option>`).join('');
+            deptSelect.value = departments.includes(currentDept) ? currentDept : 'all';
+            careerSelect.value = careers.includes(currentCareer) ? currentCareer : 'all';
+        }
+
+        function getFilteredHQTalentProfiles() {
+            const search = document.getElementById('hq-talent-search').value.trim().toLowerCase();
+            const dept = document.getElementById('hq-talent-dept-filter').value;
+            const career = document.getElementById('hq-talent-career-filter').value;
+            const level = document.getElementById('hq-talent-level-filter').value;
+
+            return hqTalentProfiles.filter(talent => {
+                const matchesSearch = !search || [talent.name, talent.department, talent.role].some(value => value.toLowerCase().includes(search));
+                const matchesDept = dept === 'all' || talent.department === dept;
+                const matchesCareer = career === 'all' || talent.careers.some(item => item.name === career);
+                const matchesLevel = level === 'all' || talent.level === level;
+                return matchesSearch && matchesDept && matchesCareer && matchesLevel;
+            });
+        }
+
+        function getTopNameFromCounts(items) {
+            if (!items.length) return '-';
+            const counts = items.reduce((acc, item) => {
+                acc[item] = (acc[item] || 0) + 1;
+                return acc;
+            }, {});
+            return Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+        }
+
+        function renderHQTalentView() {
+            const grid = document.getElementById('hq-talent-grid');
+            if (!grid) return;
+
+            const data = getFilteredHQTalentProfiles();
+            const avgChance = data.length ? data.reduce((sum, item) => sum + item.chance, 0) / data.length : 0;
+            const topTheme = getTopNameFromCounts(data.map(item => item.strengths[0].name));
+            const topCareer = getTopNameFromCounts(data.map(item => item.careers[0].name));
+
+            document.getElementById('hq-talent-count').innerText = data.length;
+            document.getElementById('hq-summary-total').innerText = data.length;
+            document.getElementById('hq-summary-chance').innerText = `${avgChance.toFixed(1)}%`;
+            document.getElementById('hq-summary-theme').innerText = topTheme;
+            document.getElementById('hq-summary-career').innerText = topCareer;
+
+            if (!data.length) {
+                grid.innerHTML = '<div class="col-span-full bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 font-semibold">No HQ talent profiles match the selected filters.</div>';
+                return;
+            }
+
+            grid.innerHTML = data.map(talent => {
+                const initials = talent.name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
+                const gradeColor = talent.chance >= 90 ? 'text-blue-700 bg-blue-50 border-blue-100' : talent.chance >= 84 ? 'text-emerald-700 bg-emerald-50 border-emerald-100' : 'text-amber-700 bg-amber-50 border-amber-100';
+                const topCareer = talent.careers[0];
+                const topStrengths = talent.strengths.slice(0, 2).map(item => item.name).join(' / ');
+                return `
+                    <article onclick="openHQTalentModal('${talent.id}')" class="bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition cursor-pointer overflow-hidden">
+                        <div class="px-3 py-2.5 flex items-start justify-between gap-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <img src="${talent.img}" alt="${talent.name}" onerror="this.outerHTML='<div class=&quot;w-10 h-10 rounded-full bg-gradient-to-br from-slate-800 to-blue-600 text-white flex items-center justify-center font-black shrink-0&quot;>${initials}</div>'" class="w-10 h-10 rounded-full object-cover border border-slate-200 shadow-sm shrink-0">
+                                <div class="min-w-0">
+                                    <h3 class="font-black text-sm text-slate-800 truncate">${talent.name}</h3>
+                                    <p class="text-[11px] text-slate-500 truncate">${talent.role}</p>
+                                    <p class="text-[11px] text-slate-400 font-semibold">${talent.department}</p>
+                                </div>
+                            </div>
+                            <div class="text-right shrink-0 max-w-[130px]">
+                                <span class="inline-flex px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${gradeColor}">${talent.level}</span>
+                            </div>
+                        </div>
+                        <div class="px-3 pb-3">
+                            <div class="grid grid-cols-3 gap-2 mb-3">
+                                <div class="rounded-md bg-blue-50 border border-blue-100 px-2.5 py-1.5">
+                                    <div class="text-[10px] text-blue-500 uppercase font-bold">Chance</div>
+                                    <div class="text-lg font-black text-blue-800">${talent.chance.toFixed(1)}%</div>
+                                </div>
+                                <div class="rounded-md bg-slate-50 border border-slate-100 px-2.5 py-1.5">
+                                    <div class="text-[10px] text-slate-400 uppercase font-bold">Indi</div>
+                                    <div class="text-lg font-black text-slate-800">${talent.indivGrade}</div>
+                                </div>
+                                <div class="rounded-md bg-slate-50 border border-slate-100 px-2.5 py-1.5">
+                                    <div class="text-[10px] text-slate-400 uppercase font-bold">Dept</div>
+                                    <div class="text-lg font-black text-slate-800">${talent.deptGrade}</div>
+                                </div>
+                            </div>
+                            <div class="rounded-md bg-slate-50 border border-slate-100 px-2.5 py-1.5 mb-2.5 flex items-center justify-between gap-3">
+                                <span class="text-[11px] text-slate-500 uppercase font-bold shrink-0">Career Fit</span>
+                                <span class="text-xs font-black text-slate-800 truncate">${topCareer.name} ${topCareer.pct}%</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 text-xs">
+                                <span class="text-[11px] text-slate-500 truncate"><span class="font-bold text-slate-700">Top Test:</span> ${topStrengths}</span>
+                                <span class="text-blue-700 font-black shrink-0 flex items-center gap-1">Profile <i class="ph ph-arrow-right"></i></span>
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+        }
+
+        function openHQTalentModal(id) {
+            const talent = hqTalentProfiles.find(item => item.id === id);
+            if (!talent) return;
+            const topCareer = talent.careers[0];
+
+            document.getElementById('hq-modal-img').src = talent.img;
+            document.getElementById('hq-modal-level').innerText = talent.level;
+            document.getElementById('hq-modal-name').innerText = talent.name;
+            document.getElementById('hq-modal-role').innerText = talent.role;
+            document.getElementById('hq-modal-dept').innerText = talent.department;
+            document.getElementById('hq-modal-chance').innerText = `${talent.chance.toFixed(1)}%`;
+            document.getElementById('hq-modal-indiv').innerText = talent.indivGrade;
+            document.getElementById('hq-modal-dept-grade').innerText = talent.deptGrade;
+            document.getElementById('hq-modal-top-career').innerText = `${topCareer.name} ${topCareer.pct}%`;
+
+            document.getElementById('hq-modal-strengths').innerHTML = talent.strengths.map(item => `
+                <div>
+                    <div class="flex justify-between gap-3 text-sm mb-1">
+                        <span class="font-bold text-slate-800">${item.name}</span>
+                        <span class="font-black text-blue-700">${item.score}%</span>
+                    </div>
+                    <div class="h-2.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-blue-600 rounded-full" style="width:${item.score}%"></div></div>
+                    <p class="text-sm text-slate-600 mt-2 leading-relaxed">${item.desc}</p>
+                </div>
+            `).join('');
+
+            document.getElementById('hq-modal-careers').innerHTML = talent.careers.map(item => `
+                <div>
+                    <div class="flex justify-between gap-3 text-sm mb-1">
+                        <span class="font-bold text-slate-800">${item.name}</span>
+                        <span class="font-black text-emerald-700">${item.pct}%</span>
+                    </div>
+                    <div class="h-3 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500 rounded-full" style="width:${item.pct}%"></div></div>
+                </div>
+            `).join('');
+
+            document.getElementById('hq-modal-traits').innerHTML = Object.entries(talent.traits).map(([name, score]) => `
+                <div class="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                    <div class="text-xs text-slate-500 font-bold truncate">${name}</div>
+                    <div class="text-2xl font-black text-slate-800">${score}%</div>
+                </div>
+            `).join('');
+
+            document.getElementById('hq-profile-modal').classList.remove('hidden');
+        }
+        function closeHQTalentModal() { document.getElementById('hq-profile-modal').classList.add('hidden'); }
+
+        // ============================================================
+        // INIT
+        // ============================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedData = localStorage.getItem(STORAGE_KEY_DATA);
+            const savedAt = localStorage.getItem(STORAGE_KEY_UPDATED_AT);
+            if (savedData) {
+                try {
+                    dashboardData = JSON.parse(savedData);
+                    updateDataSourceNote(dashboardData.length, savedAt ? new Date(savedAt) : null, false);
+                } catch (e) {
+                    dashboardData = REAL_DATA.map(r => ({ ...r }));
+                    updateDataSourceNote(dashboardData.length, null, true);
+                }
+            } else {
+                dashboardData = REAL_DATA.map(r => ({ ...r }));
+                updateDataSourceNote(dashboardData.length, null, true);
+            }
+
+            populateGradeLegend();
+            populateHQTalentFilters();
+            applyFilters();
+            populateGroupFilter();
+            populateLevelFilter();
+            switchView('board');
+        });
+    </script>
+</body>
+</html>
